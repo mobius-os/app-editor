@@ -184,6 +184,31 @@ function formatBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// A new file/folder name is a single path segment — no slashes (we don't want
+// the create affordance silently materializing nested dirs the owner didn't
+// see) and no traversal. Reject empty/whitespace and the `.keep` marker we use
+// internally to materialize folders.
+function isValidLeafName(name) {
+  const n = String(name || '').trim()
+  if (!n) return false
+  if (n === '.keep') return false
+  if (n.includes('/')) return false
+  if (n === '.' || n === '..') return false
+  return true
+}
+
+// `.keep` is our folder-materialization marker (the FS API has no mkdir, so a
+// new folder is created by writing `<dir>/.keep`). It's an implementation
+// detail, never shown in the tree.
+function isKeepMarker(name) {
+  return String(name || '') === '.keep'
+}
+
+// Join a directory path (FS-root-relative, '' = root) with a leaf name.
+function joinPath(dir, leaf) {
+  return dir ? `${dir}/${leaf}` : leaf
+}
+
 // ----------------------------------------------------------------------
 // CodeMirror markdown live-preview engine (adapted inline from the Notes app's
 // src/editor/{extensions,livePreview,widgets}.js). Markdown edits and preview
@@ -495,6 +520,65 @@ function ImagePreview({ path }) {
 }
 
 // ----------------------------------------------------------------------
+// Name-entry modal for "+ File" / "+ Folder". Möbius mini-apps run in an
+// iframe WITHOUT the `allow-modals` sandbox token, so window.prompt silently
+// no-ops; we render our own absolutely-positioned overlay. It's a focused
+// single-field form (not a generic prompt surface) — name in, Create/Cancel
+// out — reusing the app's existing button + scrim shapes. `onSubmit(name)`
+// receives the trimmed leaf; the parent validates + writes and can report an
+// `error` back for inline display without tearing the modal down.
+// ----------------------------------------------------------------------
+function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) {
+  const [name, setName] = useState('')
+  const inputRef = useRef(null)
+  const isFolder = kind === 'folder'
+  useEffect(() => {
+    inputRef.current?.focus()
+    const onKey = (e) => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  const trimmed = name.trim()
+  const valid = isValidLeafName(trimmed)
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    if (!valid || busy) return
+    onSubmit(trimmed)
+  }
+  const where = targetDir ? `/data/${targetDir}` : '/data'
+  return (
+    <div className="ed-modal-scrim" onClick={onCancel}>
+      <div className="ed-modal" role="dialog" aria-modal="true" aria-label={isFolder ? 'New folder' : 'New file'} onClick={(e) => e.stopPropagation()}>
+        <form onSubmit={handleSubmit}>
+          <div className="ed-modal-title">{isFolder ? 'New folder' : 'New file'}</div>
+          <div className="ed-modal-where" title={where}>in {where}</div>
+          <input
+            ref={inputRef}
+            className="ed-modal-input"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={isFolder ? 'folder-name' : 'file-name.md'}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            aria-invalid={name && !valid ? 'true' : undefined}
+          />
+          {error && <div className="ed-modal-error">{error}</div>}
+          <div className="ed-modal-actions">
+            <button type="button" className="ed-btn" onClick={onCancel}>Cancel</button>
+            <button type="submit" className="ed-btn ed-btn-primary" disabled={!valid || busy}>
+              {busy ? 'Creating…' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------
 // File tree. Lazy + level-at-a-time: a directory's children are fetched on
 // first expand and cached in the App's `treeCache` (keyed by dir path). The
 // App owns the cache + expansion set so they survive a drawer close/reopen;
@@ -506,10 +590,13 @@ function ImagePreview({ path }) {
 // ----------------------------------------------------------------------
 function FileNode({
   entry, depth, expanded, childrenByDir, redactedByDir, loadingDirs, errorDirs,
-  selectedPath, gitRepos, onToggleDir, onSelectFile,
+  selectedPath, gitRepos, focusRoot, onToggleDir, onSelectFile, onFocusDir,
 }) {
   const isDir = entry.type === 'directory'
   const pad = { paddingLeft: `${8 + depth * 14}px` }
+
+  // `.keep` is the internal folder-materialization marker — never a real row.
+  if (isKeepMarker(entry.name)) return null
 
   if (!isDir) {
     const selected = entry.path === selectedPath
@@ -533,20 +620,35 @@ function FileNode({
   const kids = childrenByDir[entry.path]
   const redacted = redactedByDir[entry.path] || []
   const isGit = entry.is_git_repo || gitRepos.has(entry.path)
+  const isFocused = focusRoot === entry.path
   return (
     <>
-      <button
-        type="button"
-        className="ed-row ed-row-dir"
-        style={pad}
-        onClick={() => onToggleDir(entry.path)}
-        aria-expanded={isOpen}
-        title={entry.path}
-      >
-        <span className="ed-row-caret" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
-        <span className="ed-row-name">{entry.name}</span>
-        {isGit && <span className="ed-git-badge" title="Git repository">git</span>}
-      </button>
+      <div className="ed-row-wrap">
+        <button
+          type="button"
+          className="ed-row ed-row-dir"
+          style={pad}
+          onClick={() => onToggleDir(entry.path)}
+          aria-expanded={isOpen}
+          title={entry.path}
+        >
+          <span className="ed-row-caret" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+          <span className="ed-row-name">{entry.name}</span>
+          {isGit && <span className="ed-git-badge" title="Git repository">git</span>}
+        </button>
+        {onFocusDir && (
+          <button
+            type="button"
+            className={`ed-row-focus${isFocused ? ' is-focused' : ''}`}
+            onClick={() => onFocusDir(entry.path)}
+            aria-pressed={isFocused}
+            aria-label={`Focus on ${entry.name}`}
+            title={`Show only ${entry.name}`}
+          >
+            ⊙
+          </button>
+        )}
+      </div>
       {isOpen && (
         <div role="group">
           {loadingDirs.has(entry.path) && !kids && (
@@ -569,8 +671,10 @@ function FileNode({
               errorDirs={errorDirs}
               selectedPath={selectedPath}
               gitRepos={gitRepos}
+              focusRoot={focusRoot}
               onToggleDir={onToggleDir}
               onSelectFile={onSelectFile}
+              onFocusDir={onFocusDir}
             />
           ))}
           {redacted.length > 0 && (
@@ -694,7 +798,7 @@ function agentSystemPrompt(appId) {
   ].join('\n')
 }
 
-function ChatPanel({ appId, onTurnDone }) {
+function ChatPanel({ appId, chatHeight, onTurnDone }) {
   const mountRef = useRef(null)
   const [error, setError] = useState(null)
   // Keep the latest onTurnDone in a ref so the mount effect does not depend on
@@ -729,12 +833,22 @@ function ChatPanel({ appId, onTurnDone }) {
     return () => { disposed = true; if (handle) handle.destroy() }
   }, [systemPrompt])
 
+  // When the panel is dragged short, drop the title/hint band so the whole
+  // height goes to the embed — the chat's own composer is pinned at the bottom
+  // of the iframe, so a short panel shows just the input ("full vibe writing").
+  const collapsed = Number.isFinite(chatHeight) && chatHeight < 110
+
   return (
-    <section className="ed-chat">
-      <div className="ed-chat-head">
-        <span className="ed-chat-title">Agent</span>
-        <span className="ed-chat-hint">Ask it to edit any file — you’ll see it change</span>
-      </div>
+    <section
+      className={`ed-chat${collapsed ? ' is-collapsed' : ''}`}
+      style={Number.isFinite(chatHeight) ? { height: `${chatHeight}px` } : undefined}
+    >
+      {!collapsed && (
+        <div className="ed-chat-head">
+          <span className="ed-chat-title">Agent</span>
+          <span className="ed-chat-hint">Ask it to edit any file — you’ll see it change</span>
+        </div>
+      )}
       {error && <div className="ed-chat-error">{error}</div>}
       <div className="ed-chat-embed" ref={mountRef} />
     </section>
@@ -776,6 +890,29 @@ function savePrefs(prefs) {
   const ms = (typeof window !== 'undefined' && window.mobius && window.mobius.storage) || null
   if (!ms || typeof ms.set !== 'function') return
   ms.set(PREFS_PATH, prefs).catch(() => {})
+}
+
+// ----------------------------------------------------------------------
+// Chat/editor split height. Persisted to localStorage (keyed by app) rather
+// than ui-prefs.json — it's a px layout preference that changes on every drag
+// and we don't want each pixel hitting the storage round-trip the way the
+// expanded-dir set does. The MIN is low enough that dragging the divider to
+// the bottom collapses the chat transcript to just its composer band (the
+// composer is pinned at the bottom of the chat iframe — "full vibe writing").
+// ----------------------------------------------------------------------
+const CHAT_HEIGHT_VERSION = 1
+const CHAT_MIN_PX = 60
+const CHAT_DEFAULT_PX = 280
+
+function chatHeightKey(appId) {
+  return `editor:${appId}:chat-height:v${CHAT_HEIGHT_VERSION}`
+}
+
+function readChatHeight(appId) {
+  if (typeof localStorage === 'undefined') return CHAT_DEFAULT_PX
+  const raw = Number(localStorage.getItem(chatHeightKey(appId)))
+  if (!Number.isFinite(raw) || raw <= 0) return CHAT_DEFAULT_PX
+  return Math.max(CHAT_MIN_PX, raw)
 }
 
 // ----------------------------------------------------------------------
@@ -872,6 +1009,20 @@ export default function App({ appId }) {
   // (collapse-then-reexpand, or an agent-turn refresh that supersedes a
   // first-expand still in flight).
   const dirGenRef = useRef(new Map())
+  // Resizable chat/editor split. chatHeight is the chat panel's px height; the
+  // editor pane takes the rest. mainRef measures the available column so a drag
+  // can clamp against the real container height.
+  const [chatHeight, setChatHeight] = useState(() => readChatHeight(appId))
+  const mainRef = useRef(null)
+
+  // --- Folder focus: when set, the tree renders only this dir's subtree. ---
+  const [focusRoot, setFocusRoot] = useState('')
+
+  // --- Create file/folder: the open name-entry modal, if any. ---
+  // { kind: 'file'|'folder', targetDir } while open; null when closed.
+  const [createModal, setCreateModal] = useState(null)
+  const [createError, setCreateError] = useState(null)
+  const [creating, setCreating] = useState(false)
 
   // Fetch one directory level (uncached). Returns the entries or throws.
   const fetchDir = useCallback(async (dirPath) => {
@@ -1043,6 +1194,121 @@ export default function App({ appId }) {
     savePrefs({ lastPath: path, expanded: Array.from(expanded) })
   }, [expanded])
 
+  // --- Drawer open/close with shell-mediated back support ---
+  const closeNav = useCallback(() => {
+    try { navHandleRef.current?.close?.() } catch {}
+    navHandleRef.current = null
+    setNavOpen(false)
+  }, [])
+
+  const openNav = useCallback(async () => {
+    if (window.mobius?.nav?.open) {
+      const handle = window.mobius.nav.open('editor-drawer', () => {
+        navHandleRef.current = null
+        setNavOpen(false)
+      })
+      navHandleRef.current = handle
+      await handle.ready?.catch(() => false)
+      if (navHandleRef.current !== handle) return
+    }
+    setNavOpen(true)
+  }, [])
+
+  const toggleNav = useCallback(() => { if (navOpen) closeNav(); else openNav() }, [navOpen, closeNav, openNav])
+
+  // Fetch + cache one directory level unconditionally (refreshDir no-ops for
+  // dirs we never expanded; focus + create both need a dir's children fetched
+  // on demand). Returns the entries so a caller can act on the result.
+  const loadDir = useCallback(async (dirPath) => {
+    setLoadingDirs((prev) => { const n = new Set(prev); n.add(dirPath); return n })
+    setErrorDirs((prev) => { const n = { ...prev }; delete n[dirPath]; return n })
+    try {
+      const { entries, redacted } = await fetchDir(dirPath)
+      setChildrenByDir((prev) => ({ ...prev, [dirPath]: entries }))
+      setRedactedByDir((prev) => ({ ...prev, [dirPath]: redacted }))
+      return entries
+    } catch (e) {
+      setErrorDirs((prev) => ({ ...prev, [dirPath]: e.message || 'Could not list this folder.' }))
+      return null
+    } finally {
+      setLoadingDirs((prev) => { const n = new Set(prev); n.delete(dirPath); return n })
+    }
+  }, [fetchDir])
+
+  // --- Folder focus ---
+  // "Focus" narrows the tree to one folder's subtree; clearing restores the
+  // full tree. Toggling focus on the already-focused dir unfocuses it. We make
+  // sure the focused dir's children are fetched (it may never have been
+  // expanded) so the narrowed tree isn't blank.
+  // Focus stays in the drawer (the owner is narrowing what they browse), so we
+  // do NOT close the nav here — closing would hide the tree they just focused.
+  const focusDir = useCallback((dirPath) => {
+    setFocusRoot((cur) => {
+      const next = cur === dirPath ? '' : dirPath
+      if (next && !childrenByDir[next]) loadDir(next)
+      return next
+    })
+  }, [childrenByDir, loadDir])
+
+  const clearFocus = useCallback(() => setFocusRoot(''), [])
+
+  // --- Create a file or folder ---
+  // The create target is the focused folder if any, else the directory of the
+  // selected file, else the root. A new file is an empty write; a new folder is
+  // a `.keep` marker write (the FS API auto-creates parent dirs, so a single
+  // write materializes the path). After a successful write we re-fetch the
+  // target dir so the new entry appears, and select a new file so the owner
+  // lands in it ready to type.
+  const createTargetDir = useCallback(() => {
+    if (focusRoot) return focusRoot
+    if (selectedPath) return dirName(selectedPath)
+    return ''
+  }, [focusRoot, selectedPath])
+
+  const openCreate = useCallback((kind) => {
+    setCreateError(null)
+    setCreateModal({ kind, targetDir: createTargetDir() })
+  }, [createTargetDir])
+
+  const closeCreate = useCallback(() => {
+    setCreateModal(null)
+    setCreateError(null)
+    setCreating(false)
+  }, [])
+
+  const submitCreate = useCallback(async (name) => {
+    if (!createModal) return
+    const { kind, targetDir } = createModal
+    if (!isValidLeafName(name)) {
+      setCreateError('Use a single name — no slashes, and not “.keep”.')
+      return
+    }
+    // Guard against clobbering an existing entry at the target (the FS write
+    // would otherwise silently overwrite a file's contents with empty).
+    const siblings = childrenByDir[targetDir]
+    if (Array.isArray(siblings) && siblings.some((e) => e.name === name)) {
+      setCreateError(`“${name}” already exists here.`)
+      return
+    }
+    setCreating(true)
+    setCreateError(null)
+    try {
+      if (kind === 'folder') {
+        await fsWrite(joinPath(joinPath(targetDir, name), '.keep'), '')
+      } else {
+        await fsWrite(joinPath(targetDir, name), '')
+      }
+      // Make sure the target dir is expanded + re-fetched so the new row shows.
+      if (targetDir) setExpanded((prev) => { const n = new Set(prev); n.add(targetDir); return n })
+      await loadDir(targetDir)
+      closeCreate()
+      if (kind === 'file') selectFile(joinPath(targetDir, name))
+    } catch (e) {
+      setCreating(false)
+      setCreateError(e.message || 'Could not create.')
+    }
+  }, [createModal, childrenByDir, loadDir, selectFile, closeCreate])
+
   // When the selection changes, load the file + its git status.
   useEffect(() => {
     if (!selectedPath) { setMeta(null); setContent(''); setGit(null); return }
@@ -1136,27 +1402,61 @@ export default function App({ appId }) {
     expandedRef.current.forEach((d) => refreshDir(d))
   }, [loadFile, loadGit, refreshDir])
 
-  // --- Drawer open/close with shell-mediated back support ---
-  const closeNav = useCallback(() => {
-    try { navHandleRef.current?.close?.() } catch {}
-    navHandleRef.current = null
-    setNavOpen(false)
-  }, [])
+  // --- Chat/editor split resize ---
+  // Persist the panel height (best-effort, per app). The drag itself is a
+  // pointer-capture loop on the divider: pointerdown records the start, each
+  // pointermove sets chatHeight clamped between CHAT_MIN_PX and
+  // (containerHeight - CHAT_MIN_PX) so neither pane can vanish, pointerup ends.
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return
+    try { localStorage.setItem(chatHeightKey(appId), String(Math.round(chatHeight))) } catch {}
+  }, [appId, chatHeight])
 
-  const openNav = useCallback(async () => {
-    if (window.mobius?.nav?.open) {
-      const handle = window.mobius.nav.open('editor-drawer', () => {
-        navHandleRef.current = null
-        setNavOpen(false)
-      })
-      navHandleRef.current = handle
-      await handle.ready?.catch(() => false)
-      if (navHandleRef.current !== handle) return
+  const beginChatResize = useCallback((event) => {
+    event.preventDefault()
+    const container = mainRef.current
+    if (!container) return
+    const total = container.getBoundingClientRect().height
+    if (!total) return
+    const startY = event.clientY
+    const startHeight = chatHeight
+    const maxPx = Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX)
+    // Dragging the divider DOWN shrinks the chat; clamp so the editor keeps at
+    // least CHAT_MIN_PX too.
+    const onMove = (moveEvent) => {
+      const next = startHeight + (startY - moveEvent.clientY)
+      setChatHeight(Math.min(maxPx, Math.max(CHAT_MIN_PX, next)))
     }
-    setNavOpen(true)
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp, { once: true })
+  }, [chatHeight])
+
+  // Keyboard resize for the divider (it's a focusable separator): arrows nudge,
+  // Home/End jump to the extremes the drag can reach.
+  const nudgeChat = useCallback((deltaPx) => {
+    const container = mainRef.current
+    const total = container ? container.getBoundingClientRect().height : 0
+    const maxPx = total ? Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX) : Infinity
+    setChatHeight((v) => Math.min(maxPx, Math.max(CHAT_MIN_PX, v + deltaPx)))
   }, [])
 
-  const toggleNav = useCallback(() => { if (navOpen) closeNav(); else openNav() }, [navOpen, closeNav, openNav])
+  const onResizerKey = useCallback((event) => {
+    if (event.key === 'ArrowUp') { event.preventDefault(); nudgeChat(24) }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); nudgeChat(-24) }
+    else if (event.key === 'Home') {
+      event.preventDefault()
+      const container = mainRef.current
+      const total = container ? container.getBoundingClientRect().height : 0
+      setChatHeight(total ? Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX) : chatHeight)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setChatHeight(CHAT_MIN_PX)
+    }
+  }, [nudgeChat, chatHeight])
 
   useEffect(() => () => { try { navHandleRef.current?.close?.() } catch {} navHandleRef.current = null }, [])
 
@@ -1164,6 +1464,14 @@ export default function App({ appId }) {
   const rootRedacted = redactedByDir[''] || []
   const openName = selectedPath ? baseName(selectedPath) : null
   const repoRoot = git ? git.repo_root : null
+
+  // When a folder is focused, the tree renders that dir's children (fetched on
+  // focus) at depth 0 instead of the root. The focused dir's own children may
+  // still be loading the first time.
+  const focused = focusRoot !== ''
+  const treeEntries = focused ? (childrenByDir[focusRoot] || []) : rootEntries
+  const treeRedacted = focused ? (redactedByDir[focusRoot] || []) : rootRedacted
+  const focusLoading = focused && !childrenByDir[focusRoot] && loadingDirs.has(focusRoot)
 
   // What to render in the editor pane.
   function renderEditor() {
@@ -1272,25 +1580,59 @@ export default function App({ appId }) {
           <div className="ed-drawer-head">
             <span className="ed-drawer-title">Files</span>
             <span className="ed-drawer-sub">/data</span>
+            <div className="ed-drawer-actions">
+              <button
+                type="button"
+                className="ed-new-btn"
+                onClick={() => openCreate('file')}
+                disabled={!online}
+                title="New file"
+              >
+                + File
+              </button>
+              <button
+                type="button"
+                className="ed-new-btn"
+                onClick={() => openCreate('folder')}
+                disabled={!online}
+                title="New folder"
+              >
+                + Folder
+              </button>
+            </div>
           </div>
+          {focused && (
+            <div className="ed-focus-bar">
+              <button type="button" className="ed-focus-clear" onClick={clearFocus} title="Show the full tree">
+                ← All files
+              </button>
+              <span className="ed-focus-path" title={`/data/${focusRoot}`}>{focusRoot}</span>
+            </div>
+          )}
           <div className="ed-tree ed-scroll" role="tree" aria-label="Filesystem">
-            {rootLoading && rootEntries.length === 0 && (
+            {!focused && rootLoading && rootEntries.length === 0 && (
               <div className="ed-row-note"><span className="ed-spinner" aria-hidden="true" /> Loading…</div>
             )}
-            {rootError && (
+            {!focused && rootError && (
               <div className="ed-row-note is-error">
                 {rootError}
                 <button type="button" className="ed-retry" onClick={loadRoot}>Retry</button>
               </div>
             )}
-            {!rootLoading && !rootError && rootEntries.length === 0 && (
+            {focusLoading && (
+              <div className="ed-row-note"><span className="ed-spinner" aria-hidden="true" /> Loading…</div>
+            )}
+            {focused && errorDirs[focusRoot] && (
+              <div className="ed-row-note is-error">{errorDirs[focusRoot]}</div>
+            )}
+            {!focusLoading && !(!focused && (rootLoading || rootError)) && !(focused && errorDirs[focusRoot]) && treeEntries.filter((e) => !isKeepMarker(e.name)).length === 0 && (
               <div className="ed-empty ed-empty-tree">
                 <div className="ed-empty-mark" aria-hidden="true">∅</div>
                 <div className="ed-empty-title">Nothing here</div>
-                <p className="ed-empty-text">/data looks empty.</p>
+                <p className="ed-empty-text">{focused ? `/data/${focusRoot} is empty.` : '/data looks empty.'}</p>
               </div>
             )}
-            {rootEntries.map((entry) => (
+            {treeEntries.map((entry) => (
               <FileNode
                 key={entry.path}
                 entry={entry}
@@ -1302,17 +1644,19 @@ export default function App({ appId }) {
                 errorDirs={errorDirs}
                 selectedPath={selectedPath}
                 gitRepos={gitRepos}
+                focusRoot={focusRoot}
                 onToggleDir={toggleDir}
                 onSelectFile={(p) => { selectFile(p); closeNav() }}
+                onFocusDir={focusDir}
               />
             ))}
-            {rootRedacted.length > 0 && (
-              <div className="ed-row-note is-protected">{rootRedacted.length} protected</div>
+            {treeRedacted.length > 0 && (
+              <div className="ed-row-note is-protected">{treeRedacted.length} protected</div>
             )}
           </div>
         </aside>
 
-        <main className="ed-main">
+        <main className="ed-main" ref={mainRef}>
           {selectedPath && (
             <GitPanel
               git={git}
@@ -1327,9 +1671,30 @@ export default function App({ appId }) {
           {diskNotice && <div className="ed-save-error is-notice" role="status">{diskNotice}</div>}
           {saveError && <div className="ed-save-error" role="status">{saveError}</div>}
           <div className="ed-editor-wrap">{renderEditor()}</div>
-          <ChatPanel appId={appId} onTurnDone={handleTurnDone} />
+          <div
+            className="ed-chat-resizer"
+            role="separator"
+            aria-label="Resize chat and editor areas"
+            aria-orientation="horizontal"
+            tabIndex={0}
+            onPointerDown={beginChatResize}
+            onKeyDown={onResizerKey}
+          >
+            <span className="ed-chat-resizer-bar" aria-hidden="true" />
+          </div>
+          <ChatPanel appId={appId} chatHeight={chatHeight} onTurnDone={handleTurnDone} />
         </main>
       </div>
+      {createModal && (
+        <NameModal
+          kind={createModal.kind}
+          targetDir={createModal.targetDir}
+          error={createError}
+          busy={creating}
+          onSubmit={submitCreate}
+          onCancel={closeCreate}
+        />
+      )}
     </div>
   )
 }
@@ -1427,11 +1792,41 @@ const CSS = `
 }
 .ed-drawer.is-open { transform: translateX(0); }
 .ed-drawer-head {
-  flex: 0 0 auto; display: flex; align-items: baseline; gap: 8px;
+  flex: 0 0 auto; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
 .ed-drawer-title { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; }
 .ed-drawer-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.ed-drawer-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
+.ed-new-btn {
+  display: inline-flex; align-items: center; min-height: 30px; padding: 4px 10px;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface2, var(--surface)); color: var(--text);
+  font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+.ed-new-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: var(--accent); }
+.ed-new-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ed-new-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Focus breadcrumb — shows the focused folder + a way back to the full tree. */
+.ed-focus-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+.ed-focus-clear {
+  flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 30px;
+  padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--accent);
+  font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
+}
+.ed-focus-clear:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.ed-focus-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ed-focus-path {
+  min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* mobius-ui:Scrollskin v1 — keep in sync; library candidate. Add the ed-scroll class to a scroller. */
 .ed-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -1441,6 +1836,26 @@ const CSS = `
 /* /mobius-ui:Scrollskin */
 
 .ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0 24px; }
+
+/* Directory rows pair the expand button with a focus button. The focus button
+   is hidden until row hover/focus on a pointer device, but always present (and
+   tappable) on touch where there's no hover. */
+.ed-row-wrap { display: flex; align-items: stretch; }
+.ed-row-wrap .ed-row { flex: 1; min-width: 0; }
+.ed-row-focus {
+  flex: 0 0 auto; width: 40px; min-height: 44px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--muted);
+  font-size: 15px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.ed-row-wrap:hover .ed-row-focus,
+.ed-row-focus:focus-visible,
+.ed-row-focus.is-focused { opacity: 1; }
+.ed-row-focus:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ed-row-focus:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ed-row-focus.is-focused { color: var(--accent); }
+@media (hover: none) { .ed-row-focus { opacity: 0.55; } }
 
 .ed-row {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
@@ -1558,10 +1973,13 @@ const CSS = `
 .ed-empty-tree { padding: 28px 20px; }
 
 /* mobius-ui:ChatEmbed v1 — keep in sync; library candidate. Diverge below the marker only. */
+/* Height is driven inline from the resizable split (chatHeight px); the 60px
+   floor matches CHAT_MIN_PX so dragging the divider down collapses the chat to
+   just its pinned composer band ("full vibe writing"). */
 .ed-chat {
   flex: 0 0 auto;
   display: flex; flex-direction: column;
-  height: 42%; min-height: 200px;
+  height: 280px; min-height: 60px;
   border-top: 1px solid var(--border); background: var(--surface);
 }
 .ed-chat-embed {
@@ -1583,6 +2001,25 @@ const CSS = `
   color: var(--text); font-size: 12.5px;
 }
 
+/* Draggable divider between the editor pane and the chat panel. touch-action:
+   none so a touch-drag resizes instead of scrolling the page. */
+.ed-chat-resizer {
+  flex: 0 0 11px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: ns-resize; touch-action: none;
+  background: var(--surface);
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.ed-chat-resizer:hover,
+.ed-chat-resizer:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  outline: none;
+}
+.ed-chat-resizer-bar {
+  width: 44px; height: 3px; border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 65%, transparent);
+}
+
 /* mobius-ui:Spinner v1 — keep in sync; library candidate. */
 @keyframes ed-spin { to { transform: rotate(360deg); } }
 .ed-spinner {
@@ -1593,6 +2030,39 @@ const CSS = `
 }
 @media (prefers-reduced-motion: reduce) { .ed-spinner { animation: none; } }
 /* /mobius-ui:Spinner */
+
+/* Name-entry modal for + File / + Folder. Absolutely positioned over the whole
+   app (the iframe blocks window.prompt). Reuses the .ed-btn shapes for actions. */
+.ed-modal-scrim {
+  position: absolute; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(0, 0, 0, 0.5);
+}
+.ed-modal {
+  width: 100%; max-width: 360px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 18px 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+}
+.ed-modal-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.ed-modal-where {
+  margin-top: 3px; font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ed-modal-input {
+  width: 100%; margin-top: 12px; min-height: 44px; padding: 10px 12px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text);
+  font-family: var(--mono); font-size: 14px;
+}
+.ed-modal-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+.ed-modal-input[aria-invalid="true"] { border-color: var(--danger); }
+.ed-modal-error {
+  margin-top: 10px; padding: 7px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  color: var(--text); font-size: 12px; line-height: 1.4;
+}
+.ed-modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
 
 /* On a wide viewport the drawer is a static column, not an overlay. */
 @media (min-width: 760px) {
