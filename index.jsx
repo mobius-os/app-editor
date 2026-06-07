@@ -1,7 +1,7 @@
 import {
   useState, useEffect, useCallback, useMemo, useRef,
 } from 'react'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Compartment } from '@codemirror/state'
 import {
   EditorView, keymap, ViewPlugin, Decoration, WidgetType,
 } from '@codemirror/view'
@@ -233,7 +233,7 @@ class MathWidget extends WidgetType {
   ignoreEvent() { return true }
 }
 
-const HIDE_MARKS = new Set(['HeaderMark', 'EmphasisMark', 'StrikethroughMark'])
+const HIDE_MARKS = new Set(['HeaderMark', 'EmphasisMark', 'StrikethroughMark', 'QuoteMark', 'ListMark', 'LinkMark', 'CodeMark', 'CodeInfo'])
 const INLINE_MATH = /(?<!\$)\$([^$\n]+?)\$(?!\$)/g
 const BLOCK_MATH = /\$\$([^\n]+?)\$\$/g
 
@@ -338,8 +338,8 @@ const mdHighlight = HighlightStyle.define([
 
 const cmTheme = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text)' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font)', lineHeight: '1.6', fontSize: '15px' },
-  '.cm-content': { padding: '14px 16px 30vh', caretColor: 'var(--accent)' },
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font)', lineHeight: '1.65', fontSize: '15px' },
+  '.cm-content': { padding: '14px 16px 30vh', caretColor: 'var(--accent)', maxWidth: '760px', margin: '0 auto', width: '100%' },
   '&.cm-focused': { outline: 'none' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
   '.cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 22%, transparent)' },
@@ -370,7 +370,6 @@ function buildMarkdownExtensions(onDocChange) {
     livePreview(),
     keymap.of([indentWithTab, ...historyKeymap, ...defaultKeymap]),
     cmTheme,
-    EditorView.editable.of(true),
     EditorView.updateListener.of((u) => { if (u.docChanged) onDocChange(u.state.doc.toString()) }),
   ]
 }
@@ -381,7 +380,6 @@ function buildPlainExtensions(onDocChange) {
     EditorView.lineWrapping,
     keymap.of([indentWithTab, ...historyKeymap, ...defaultKeymap]),
     cmThemePlain,
-    EditorView.editable.of(true),
     EditorView.updateListener.of((u) => { if (u.docChanged) onDocChange(u.state.doc.toString()) }),
   ]
 }
@@ -393,37 +391,59 @@ function buildPlainExtensions(onDocChange) {
 // and onTurnDone re-read it) replaces the whole doc — but only when the user
 // isn't the one who just typed it. We track the last value emitted by local
 // typing in `lastEmitted` so a parent re-render that echoes our own onChange
-// back as `value` does NOT reset the cursor. `readOnly` swaps in a read-only
-// configuration. The whole view is rebuilt when `markdown`/`readOnly`/`docKey`
-// change (different file or mode), because the extension stack differs.
+// back as `value` does NOT reset the cursor. The view is rebuilt only when
+// `markdown`/`docKey` change (different file or syntax mode), because the
+// extension stack differs. `readOnly` is NOT a rebuild trigger: a transient
+// readOnly flip (meta briefly null on agent reload) would tear down the view
+// and reset the caret to position 0. Instead read-only is reconfigured live
+// through a Compartment, leaving the view (and cursor) intact.
 // ----------------------------------------------------------------------
 function CodeEditor({ value, markdown: isMd, readOnly, docKey, onChange }) {
   const host = useRef(null)
   const view = useRef(null)
   const onChangeRef = useRef(onChange)
   const lastEmitted = useRef(value)
+  const roCompartment = useRef(null)
+  if (roCompartment.current === null) roCompartment.current = new Compartment()
   useEffect(() => { onChangeRef.current = onChange }, [onChange])
 
-  // Rebuild the view when the file (docKey) or the mode (markdown/readOnly)
-  // changes. Editing the same file just dispatches doc changes (effect below).
+  // Rebuild the view when the file (docKey) or the syntax mode (markdown)
+  // changes. Read-only lives in a compartment (reconfigured below), so a
+  // readOnly flip does NOT rebuild. Editing the same file just dispatches doc
+  // changes (effect further below).
   useEffect(() => {
     const emit = (text) => {
       lastEmitted.current = text
       if (onChangeRef.current) onChangeRef.current(text)
     }
     const base = isMd ? buildMarkdownExtensions(emit) : buildPlainExtensions(emit)
-    const extensions = readOnly
-      ? [...base, EditorState.readOnly.of(true), EditorView.editable.of(false)]
-      : base
+    const extensions = [
+      ...base,
+      roCompartment.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
+    ]
     const state = EditorState.create({ doc: value || '', extensions })
     const v = new EditorView({ state, parent: host.current })
     view.current = v
     lastEmitted.current = value || ''
     return () => { v.destroy(); view.current = null }
-    // value is intentionally omitted: a docKey change carries the new file's
-    // value; reacting to value here would rebuild the view on every keystroke.
+    // value/readOnly are intentionally omitted: a docKey change carries the new
+    // file's value (reacting to value would rebuild on every keystroke), and
+    // readOnly is reconfigured via the compartment effect below, not a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docKey, isMd, readOnly])
+  }, [docKey, isMd])
+
+  // Read-only toggled for the SAME view (meta resolved/cleared on reload) —
+  // reconfigure the compartment in place. No view rebuild, so the cursor stays.
+  useEffect(() => {
+    const v = view.current
+    if (!v) return
+    v.dispatch({
+      effects: roCompartment.current.reconfigure([
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+      ]),
+    })
+  }, [readOnly])
 
   // External value change for the SAME file (agent edit re-read, or a
   // revalidation) — replace the doc, but skip our own echo so typing isn't
@@ -1112,7 +1132,7 @@ export default function App({ appId }) {
           value={content}
           markdown={isMarkdownPath(selectedPath)}
           readOnly={readOnly}
-          docKey={`${selectedPath}|${readOnly ? 'ro' : 'rw'}`}
+          docKey={`${selectedPath}`}
           onChange={onEditorChange}
         />
       </div>
@@ -1333,7 +1353,7 @@ const CSS = `
 .ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0 24px; }
 
 .ed-row {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 38px;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
   padding: 6px 12px 6px 0; text-align: left;
   background: transparent; border: 0; color: var(--text);
   font-family: var(--font); font-size: 14px; cursor: pointer;
@@ -1343,7 +1363,7 @@ const CSS = `
 .ed-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ed-row-file.is-selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .ed-row-file.is-selected .ed-row-name { font-weight: 650; color: var(--text); }
-.ed-row-caret { flex: 0 0 auto; width: 14px; font-size: 11px; color: var(--muted); text-align: center; }
+.ed-row-caret { flex: 0 0 auto; width: 20px; font-size: 17px; line-height: 1; color: var(--text); text-align: center; }
 .ed-row-glyph {
   flex: 0 0 auto; width: 18px; text-align: center; font-size: 11px; font-weight: 700;
   color: var(--accent); font-family: var(--mono);
@@ -1380,7 +1400,7 @@ const CSS = `
   font-family: var(--font); font-size: 12.5px;
 }
 .ed-git-bar.is-quiet { color: var(--muted); cursor: default; min-height: 34px; font-size: 12px; }
-.ed-git-caret { flex: 0 0 auto; width: 12px; font-size: 10px; color: var(--muted); }
+.ed-git-caret { flex: 0 0 auto; width: 16px; font-size: 14px; line-height: 1; color: var(--muted); }
 .ed-git-branch { font-weight: 700; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .ed-git-track { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ed-git-counts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
