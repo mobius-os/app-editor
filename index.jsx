@@ -204,12 +204,20 @@ class CheckboxWidget extends WidgetType {
     const box = document.createElement('input')
     box.type = 'checkbox'
     box.checked = this.checked
-    box.style.cssText = 'margin:0 6px 0 0; cursor:pointer; vertical-align:middle; accent-color:var(--accent)'
-    box.addEventListener('mousedown', (e) => {
-      e.preventDefault()
-      const insert = this.checked ? '[ ]' : '[x]'
-      view.dispatch({ changes: { from: this.pos, to: this.pos + 3, insert } })
-    })
+    // In a read-only doc (platform-managed file) a change transaction is
+    // silently filtered, so the toggle would do nothing — render it disabled
+    // and non-interactive instead of looking live-but-dead.
+    const ro = view.state.readOnly
+    box.style.cssText = `margin:0 6px 0 0; cursor:${ro ? 'default' : 'pointer'}; vertical-align:middle; accent-color:var(--accent)`
+    if (ro) {
+      box.disabled = true
+    } else {
+      box.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        const insert = this.checked ? '[ ]' : '[x]'
+        view.dispatch({ changes: { from: this.pos, to: this.pos + 3, insert } })
+      })
+    }
     return box
   }
   ignoreEvent() { return false }
@@ -600,20 +608,32 @@ function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, onOpenF
   if (git.ahead) aheadBehind.push(`↑${git.ahead}`)
   if (git.behind) aheadBehind.push(`↓${git.behind}`)
 
-  const resolve = (p) => (repoRoot ? (repoRoot ? `${repoRoot}/${p}` : p) : p)
-  const list = (items, status) => items.slice(0, GIT_LIST_PREVIEW).map((it) => (
-    <button
-      key={`${status}-${it.path}`}
-      type="button"
-      className="ed-git-file"
-      onClick={() => onOpenFile(resolve(it.path))}
-      title={it.path}
-    >
-      <span className={`ed-git-dot is-${status}`} aria-hidden="true" />
-      <span className="ed-git-file-path">{it.path}</span>
-      {it.status && <span className="ed-git-file-status">{it.status}</span>}
-    </button>
-  ))
+  const resolve = (p) => (repoRoot ? `${repoRoot}/${p}` : p)
+  // Show the first GIT_LIST_PREVIEW files, then a per-group "+N more" keyed to
+  // the EXACT count (not the server's 200-cap flag) so files 9..N are never
+  // silently dropped from the open list.
+  const list = (items, status, total) => {
+    const shown = items.slice(0, GIT_LIST_PREVIEW)
+    const extra = total - shown.length
+    return (
+      <>
+        {shown.map((it) => (
+          <button
+            key={`${status}-${it.path}`}
+            type="button"
+            className="ed-git-file"
+            onClick={() => onOpenFile(resolve(it.path))}
+            title={it.path}
+          >
+            <span className={`ed-git-dot is-${status}`} aria-hidden="true" />
+            <span className="ed-git-file-path">{it.path}</span>
+            {it.status && <span className="ed-git-file-status">{it.status}</span>}
+          </button>
+        ))}
+        {extra > 0 && <div className="ed-git-more">+{extra} more</div>}
+      </>
+    )
+  }
 
   return (
     <div className="ed-git">
@@ -630,10 +650,9 @@ function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, onOpenF
       </button>
       {open && dirty > 0 && (
         <div className="ed-git-body">
-          {c.staged > 0 && <div className="ed-git-group"><div className="ed-git-group-label">Staged</div>{list(git.staged, 'staged')}</div>}
-          {c.modified > 0 && <div className="ed-git-group"><div className="ed-git-group-label">Modified</div>{list(git.modified, 'modified')}</div>}
-          {c.untracked > 0 && <div className="ed-git-group"><div className="ed-git-group-label">Untracked</div>{list(git.untracked, 'untracked')}</div>}
-          {git.truncated && <div className="ed-git-more">…and more (status truncated)</div>}
+          {c.staged > 0 && <div className="ed-git-group"><div className="ed-git-group-label">Staged</div>{list(git.staged, 'staged', c.staged)}</div>}
+          {c.modified > 0 && <div className="ed-git-group"><div className="ed-git-group-label">Modified</div>{list(git.modified, 'modified', c.modified)}</div>}
+          {c.untracked > 0 && <div className="ed-git-group"><div className="ed-git-group-label">Untracked</div>{list(git.untracked, 'untracked', c.untracked)}</div>}
         </div>
       )}
     </div>
@@ -795,16 +814,41 @@ export default function App({ appId }) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  // A "the file changed under your unsaved edit" / "couldn't re-read it" notice.
+  // Kept SEPARATE from saveError because it must survive keystrokes (saveError
+  // auto-clears on edit) — it stays until the user saves or reopens the file.
+  const [diskNotice, setDiskNotice] = useState(null)
   const [savedAt, setSavedAt] = useState(null)
   // The content as last loaded/saved from the server — what we re-read against
   // to decide whether an external (agent) edit changed the file under us.
   const baselineRef = useRef('')
+  // Live mirror of the editor buffer so the external-edit divergence check
+  // compares against what the user CURRENTLY has, not a value captured in a
+  // stale loadFile closure (which would fire a false "changed on disk" warning
+  // for characters the user already typed).
+  const contentRef = useRef('')
   const dirtyRef = useRef(false)
   const savingRef = useRef(false)
   const selectedRef = useRef(null)
+  useEffect(() => { contentRef.current = content }, [content])
   useEffect(() => { dirtyRef.current = dirty }, [dirty])
   useEffect(() => { savingRef.current = saving }, [saving])
   useEffect(() => { selectedRef.current = selectedPath }, [selectedPath])
+
+  // KaTeX's renderToString output (used by the markdown live-preview for
+  // $...$ math) needs katex.min.css for its fonts + fraction rules; the app
+  // iframe doesn't load it, so without this every formula renders as
+  // overlapping fallback glyphs. Inject it once, pinned to the importmap's
+  // katex version. offline_capable is false, so a CDN link is fine.
+  useEffect(() => {
+    const HREF = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css'
+    if (document.querySelector(`link[data-ed-katex]`)) return
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = HREF
+    link.setAttribute('data-ed-katex', '1')
+    document.head.appendChild(link)
+  }, [])
 
   // --- Git state for the open file's directory ---
   const [git, setGit] = useState(null)
@@ -817,6 +861,17 @@ export default function App({ appId }) {
   const navHandleRef = useRef(null)
   const prefsLoadedRef = useRef(false)
   const restorePathRef = useRef(null)
+  // Live mirror of the expanded set so an agent-turn refresh can re-list every
+  // open directory (the agent can create/delete files anywhere, not just in
+  // the open file's folder) without the handler closing over a stale set.
+  const expandedRef = useRef(expanded)
+  useEffect(() => { expandedRef.current = expanded }, [expanded])
+  // Per-directory load generation. Every (re)load of a directory bumps its
+  // counter and only applies its result if it is still the newest issued for
+  // that path — so a slow/in-flight fetch can't overwrite a fresher one
+  // (collapse-then-reexpand, or an agent-turn refresh that supersedes a
+  // first-expand still in flight).
+  const dirGenRef = useRef(new Map())
 
   // Fetch one directory level (uncached). Returns the entries or throws.
   const fetchDir = useCallback(async (dirPath) => {
@@ -829,26 +884,62 @@ export default function App({ appId }) {
       // eslint-disable-next-line no-await-in-loop
       const data = await fsTree(dirPath, cursor)
       all = all.concat(data.entries || [])
-      if (data.redacted && data.redacted.length) redacted = redacted.concat(data.redacted)
+      // The server returns the directory's FULL redacted list on every page
+      // (it re-scans the whole dir each request), so take it only from the
+      // first page — concatenating across pages would multiply the count.
+      if (cursor === null && data.redacted) redacted = data.redacted
       cursor = data.next_cursor
       guard += 1
     } while (cursor && guard < 50)
     return { entries: all, redacted }
   }, [])
 
+  // Fetch a directory and apply it to the tree, but only if this load is still
+  // the newest issued for that path (generation guard). showLoading drives the
+  // per-row spinner + error for an interactive expand; an agent-turn refresh
+  // passes it false so it silently supersedes whatever was in flight.
+  const loadDirInto = useCallback(async (dirPath, { showLoading = false } = {}) => {
+    const gen = (dirGenRef.current.get(dirPath) || 0) + 1
+    dirGenRef.current.set(dirPath, gen)
+    if (showLoading) {
+      setLoadingDirs((prev) => { const n = new Set(prev); n.add(dirPath); return n })
+      setErrorDirs((prev) => { const n = { ...prev }; delete n[dirPath]; return n })
+    }
+    try {
+      const { entries, redacted } = await fetchDir(dirPath)
+      if (dirGenRef.current.get(dirPath) !== gen) return  // superseded
+      setChildrenByDir((prev) => ({ ...prev, [dirPath]: entries }))
+      setRedactedByDir((prev) => ({ ...prev, [dirPath]: redacted }))
+    } catch (e) {
+      if (dirGenRef.current.get(dirPath) !== gen) return
+      if (showLoading) {
+        setErrorDirs((prev) => ({ ...prev, [dirPath]: e.message || 'Could not list this folder.' }))
+      }
+      // A silent refresh leaves the cached listing alone on a transient failure.
+    } finally {
+      if (dirGenRef.current.get(dirPath) === gen) {
+        setLoadingDirs((prev) => { const n = new Set(prev); n.delete(dirPath); return n })
+      }
+    }
+  }, [fetchDir])
+
   // Load the root listing on mount + whenever connectivity returns while the
   // root failed to load.
   const loadRoot = useCallback(async () => {
     setRootLoading(true)
     setRootError(null)
+    const gen = (dirGenRef.current.get('') || 0) + 1
+    dirGenRef.current.set('', gen)
     try {
       const { entries, redacted } = await fetchDir('')
+      if (dirGenRef.current.get('') !== gen) return  // an agent-turn refresh won
       setChildrenByDir((prev) => ({ ...prev, '': entries }))
       setRedactedByDir((prev) => ({ ...prev, '': redacted }))
     } catch (e) {
+      if (dirGenRef.current.get('') !== gen) return
       setRootError(e.message || 'Could not load the file tree.')
     } finally {
-      setRootLoading(false)
+      if (dirGenRef.current.get('') === gen) setRootLoading(false)
     }
   }, [fetchDir])
 
@@ -859,35 +950,22 @@ export default function App({ appId }) {
     const isOpen = expanded.has(dirPath)
     if (isOpen) {
       setExpanded((prev) => { const n = new Set(prev); n.delete(dirPath); return n })
+      // Also drop any in-flight loading marker — if a fetch from this expand
+      // is still running (or hung), collapsing then re-expanding must not
+      // leave a spinner stuck on a row whose children never arrived.
+      setLoadingDirs((prev) => { const n = new Set(prev); n.delete(dirPath); return n })
       return
     }
     setExpanded((prev) => { const n = new Set(prev); n.add(dirPath); return n })
     if (childrenByDir[dirPath]) return  // cached — nothing to fetch
-    setLoadingDirs((prev) => { const n = new Set(prev); n.add(dirPath); return n })
-    setErrorDirs((prev) => { const n = { ...prev }; delete n[dirPath]; return n })
-    try {
-      const { entries, redacted } = await fetchDir(dirPath)
-      setChildrenByDir((prev) => ({ ...prev, [dirPath]: entries }))
-      setRedactedByDir((prev) => ({ ...prev, [dirPath]: redacted }))
-    } catch (e) {
-      setErrorDirs((prev) => ({ ...prev, [dirPath]: e.message || 'Could not list this folder.' }))
-    } finally {
-      setLoadingDirs((prev) => { const n = new Set(prev); n.delete(dirPath); return n })
-    }
-  }, [expanded, childrenByDir, fetchDir])
+    await loadDirInto(dirPath, { showLoading: true })
+  }, [expanded, childrenByDir, loadDirInto])
 
-  // Re-fetch a directory we've already cached (after an agent edit may have
-  // added/removed files in it). No-op for dirs we never expanded.
-  const refreshDir = useCallback(async (dirPath) => {
-    if (!(dirPath in childrenByDir)) return
-    try {
-      const { entries, redacted } = await fetchDir(dirPath)
-      setChildrenByDir((prev) => ({ ...prev, [dirPath]: entries }))
-      setRedactedByDir((prev) => ({ ...prev, [dirPath]: redacted }))
-    } catch {
-      // Leave the cached listing alone on a transient failure.
-    }
-  }, [childrenByDir, fetchDir])
+  // Re-list a directory after an agent edit. The generation guard makes this
+  // supersede any in-flight first-expand of the same dir (whose result would
+  // otherwise be the stale pre-edit listing). Silent — no spinner, and the
+  // cached listing is kept on a transient failure.
+  const refreshDir = useCallback((dirPath) => loadDirInto(dirPath), [loadDirInto])
 
   // --- Load git for the open file's directory ---
   const loadGit = useCallback(async (forPath) => {
@@ -930,28 +1008,35 @@ export default function App({ appId }) {
         setContent(text)
         setDirty(false)
         setSaveError(null)
-      } else if (text !== content) {
+        setDiskNotice(null)
+      } else if (text !== contentRef.current) {
         // The file changed on disk under an unsaved edit. Keep the user's
-        // buffer but surface the divergence so they can decide.
-        setSaveError('This file changed on disk (the agent edited it). Your unsaved edits are kept — save to overwrite, or reopen the file to discard them.')
+        // buffer but surface the divergence (sticky — survives keystrokes).
+        setDiskNotice('This file changed on disk (the agent edited it). Your unsaved edits are kept — save to overwrite, or reopen the file to discard them.')
       }
       setFileError(null)
     } catch (e) {
       if (selectedRef.current !== path) return
-      if (!preserveBuffer) {
+      if (preserveBuffer) {
+        // The user still has a valid buffer open — don't replace it with an
+        // error pane (that would visually destroy their unsaved work). Surface
+        // the re-read failure non-destructively and keep them editing.
+        setDiskNotice('Could not re-read this file from disk; your unsaved edits are kept.')
+      } else {
         setContent('')
         setDirty(false)
+        setFileError(e)
       }
-      setFileError(e)
     } finally {
       if (selectedRef.current === path && !external) setFileLoading(false)
     }
-  }, [content])
+  }, [])
 
   // Select a file (from the tree or a git-panel tap).
   const selectFile = useCallback((path) => {
     setSelectedPath(path)
     setSaveError(null)
+    setDiskNotice(null)
     setSavedAt(null)
     setGitOpen(false)
     restorePathRef.current = path
@@ -1010,6 +1095,7 @@ export default function App({ appId }) {
       await fsWrite(selectedPath, content)
       baselineRef.current = content
       setDirty(false)
+      setDiskNotice(null)  // the user resolved the divergence by saving
       setSavedAt(Date.now())
       // The save may have changed git status (new modified/untracked) — refresh.
       loadGit(selectedPath)
@@ -1041,11 +1127,13 @@ export default function App({ appId }) {
     if (path) {
       loadFile(path, { external: true })
       loadGit(path)
-      refreshDir(dirName(path))
-    } else {
-      // No file open — at least refresh the root so new top-level files show.
-      refreshDir('')
     }
+    // The agent can touch files anywhere — refresh the root plus every
+    // currently-expanded directory so new/removed files appear wherever they
+    // landed, not just under the open file. refreshDir no-ops for dirs we
+    // never loaded, so this stays bounded to what's actually on screen.
+    refreshDir('')
+    expandedRef.current.forEach((d) => refreshDir(d))
   }, [loadFile, loadGit, refreshDir])
 
   // --- Drawer open/close with shell-mediated back support ---
@@ -1102,10 +1190,11 @@ export default function App({ appId }) {
     }
     if (fileError) {
       const s = fileError.status
-      const msg = s === 404 ? 'This file no longer exists — it may have been deleted.'
-        : s === 413 ? 'This file is too large to preview here. Ask the agent to open or summarise it.'
-          : s === 403 ? 'This file is protected and can’t be viewed here.'
-            : (fileError.message || 'Could not open this file.')
+      const msg = s === 401 ? 'Sign in as the owner to view files.'
+        : s === 404 ? 'This file no longer exists — it may have been deleted.'
+          : s === 413 ? 'This file is too large to preview here. Ask the agent to open or summarise it.'
+            : s === 403 ? 'This file is protected and can’t be viewed here.'
+              : (fileError.message || 'Could not open this file.')
       return <div className="ed-pane-note is-error">{msg}</div>
     }
     if (meta && meta.is_binary) {
@@ -1235,6 +1324,7 @@ export default function App({ appId }) {
               onOpenFile={(p) => selectFile(p)}
             />
           )}
+          {diskNotice && <div className="ed-save-error is-notice" role="status">{diskNotice}</div>}
           {saveError && <div className="ed-save-error" role="status">{saveError}</div>}
           <div className="ed-editor-wrap">{renderEditor()}</div>
           <ChatPanel appId={appId} onTurnDone={handleTurnDone} />
@@ -1299,7 +1389,7 @@ const CSS = `
 .ed-btn:active { transform: scale(0.97); }
 .ed-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ed-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
-.ed-btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ed-btn-primary { background: var(--accent); border-color: var(--accent); color: #062016; }
 .ed-btn-primary:hover { filter: brightness(1.06); }
 .ed-btn-icon { width: 44px; padding: 0; border-radius: 8px; font-size: 18px; }
 /* /mobius-ui:Button */
@@ -1383,7 +1473,7 @@ const CSS = `
 .ed-row-note.is-error { color: var(--danger); flex-wrap: wrap; }
 .ed-row-note.is-protected { font-style: italic; opacity: 0.75; }
 .ed-retry {
-  margin-left: 6px; padding: 4px 10px; border-radius: 8px; min-height: 32px;
+  margin-left: 6px; padding: 4px 10px; border-radius: 8px; min-height: 44px;
   border: 1px solid var(--border); background: var(--surface2, var(--surface)); color: var(--text);
   font-size: 12px; font-weight: 600; cursor: pointer;
 }
@@ -1413,7 +1503,7 @@ const CSS = `
 .ed-git-group { margin-top: 8px; }
 .ed-git-group-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 4px; }
 .ed-git-file {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
   padding: 5px 6px; text-align: left; border-radius: 8px;
   background: transparent; border: 0; color: var(--text); cursor: pointer;
   font-family: var(--mono); font-size: 12px;
