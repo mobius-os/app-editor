@@ -125,6 +125,24 @@ async function fsWrite(path, content) {
   return r.json()
 }
 
+// Delete a file at `path` under /data. 403 = denied/root-owned/protected;
+// 404 = already gone (the caller treats either as "it's no longer there").
+async function fsDelete(path) {
+  const tok = ownerToken()
+  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const r = await fetch(`${FS}/delete?path=${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${tok}` },
+  })
+  if (!r.ok) {
+    let detail = `Could not delete (${r.status}).`
+    try { detail = (await r.json()).detail || detail } catch { /* non-JSON */ }
+    throw new FsError(detail, r.status)
+  }
+  // 204/empty bodies are fine — callers don't need a payload.
+  return true
+}
+
 // Git status for the repo containing `path`. Throws FsError(404) when there's
 // no repo between `path` and the root — the caller treats that as "no repo".
 function fsGit(path) {
@@ -579,6 +597,36 @@ function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) {
 }
 
 // ----------------------------------------------------------------------
+// Confirm modal for destructive actions (deleting a file). Same overlay/scrim
+// shapes as NameModal — the iframe lacks the `allow-modals` sandbox token, so
+// window.confirm silently no-ops and returns false. The parent runs the delete
+// and can report an `error` back for inline display without tearing the modal
+// down (so a failed delete keeps the dialog open with the reason).
+// ----------------------------------------------------------------------
+function ConfirmModal({ title, body, confirmLabel, busyLabel, error, busy, onConfirm, onCancel }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+  return (
+    <div className="ed-modal-scrim" onClick={onCancel}>
+      <div className="ed-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className="ed-modal-title">{title}</div>
+        {body && <div className="ed-modal-body">{body}</div>}
+        {error && <div className="ed-modal-error">{error}</div>}
+        <div className="ed-modal-actions">
+          <button type="button" className="ed-btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button type="button" className="ed-btn ed-btn-danger" onClick={onConfirm} disabled={busy}>
+            {busy ? (busyLabel || 'Working…') : (confirmLabel || 'Confirm')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------------
 // File tree. Lazy + level-at-a-time: a directory's children are fetched on
 // first expand and cached in the App's `treeCache` (keyed by dir path). The
 // App owns the cache + expansion set so they survive a drawer close/reopen;
@@ -590,7 +638,7 @@ function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) {
 // ----------------------------------------------------------------------
 function FileNode({
   entry, depth, expanded, childrenByDir, redactedByDir, loadingDirs, errorDirs,
-  selectedPath, gitRepos, focusRoot, onToggleDir, onSelectFile, onFocusDir,
+  selectedPath, gitRepos, focusRoot, onToggleDir, onSelectFile, onFocusDir, onDeleteFile,
 }) {
   const isDir = entry.type === 'directory'
   const pad = { paddingLeft: `${8 + depth * 14}px` }
@@ -600,19 +648,35 @@ function FileNode({
 
   if (!isDir) {
     const selected = entry.path === selectedPath
+    // Wrap the file button + its delete affordance the way dir rows wrap the
+    // focus button, so the delete control gets the same hover-reveal and the
+    // row stays a single 44px touch target.
     return (
-      <button
-        type="button"
-        className={`ed-row ed-row-file${selected ? ' is-selected' : ''}`}
-        style={pad}
-        onClick={() => onSelectFile(entry.path)}
-        aria-current={selected ? 'true' : undefined}
-        title={entry.path}
-      >
-        <span className="ed-row-glyph" aria-hidden="true">{fileGlyph(entry.name)}</span>
-        <span className="ed-row-name">{entry.name}</span>
-        <span className="ed-row-size">{formatBytes(entry.size)}</span>
-      </button>
+      <div className="ed-row-wrap">
+        <button
+          type="button"
+          className={`ed-row ed-row-file${selected ? ' is-selected' : ''}`}
+          style={pad}
+          onClick={() => onSelectFile(entry.path)}
+          aria-current={selected ? 'true' : undefined}
+          title={entry.path}
+        >
+          <span className="ed-row-glyph" aria-hidden="true">{fileGlyph(entry.name)}</span>
+          <span className="ed-row-name">{entry.name}</span>
+          <span className="ed-row-size">{formatBytes(entry.size)}</span>
+        </button>
+        {onDeleteFile && (
+          <button
+            type="button"
+            className="ed-row-delete"
+            onClick={() => onDeleteFile(entry)}
+            aria-label={`Delete ${entry.name}`}
+            title={`Delete ${entry.name}`}
+          >
+            ✕
+          </button>
+        )}
+      </div>
     )
   }
 
@@ -675,6 +739,7 @@ function FileNode({
               onToggleDir={onToggleDir}
               onSelectFile={onSelectFile}
               onFocusDir={onFocusDir}
+              onDeleteFile={onDeleteFile}
             />
           ))}
           {redacted.length > 0 && (
@@ -823,7 +888,7 @@ function ChatPanel({ appId, chatHeight, onTurnDone }) {
       persist: 'chat_id.json',
       title: 'Editor agent',
       systemPrompt,
-      picker: false,
+      picker: true,
       onTurnDone: () => { if (onTurnDoneRef.current) onTurnDoneRef.current() },
       onError: ({ error: e }) => { setError(typeof e === 'string' ? e : 'Embedded chat reported an error.') },
     }).then((h) => {
@@ -1023,6 +1088,12 @@ export default function App({ appId }) {
   const [createModal, setCreateModal] = useState(null)
   const [createError, setCreateError] = useState(null)
   const [creating, setCreating] = useState(false)
+
+  // --- Delete file: the file entry pending a confirm, if any. ---
+  // Holds the FileNode `entry` while the confirm dialog is open; null when closed.
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteError, setDeleteError] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Fetch one directory level (uncached). Returns the entries or throws.
   const fetchDir = useCallback(async (dirPath) => {
@@ -1309,6 +1380,58 @@ export default function App({ appId }) {
     }
   }, [createModal, childrenByDir, loadDir, selectFile, closeCreate])
 
+  // --- Delete a file ---
+  // The tree's per-row ✕ opens a confirm dialog (the iframe blocks
+  // window.confirm). On confirm we DELETE via the FS API, then refresh the
+  // file's directory so the row disappears, and clear the open buffer if the
+  // deleted file was the one being viewed.
+  const requestDelete = useCallback((entry) => {
+    setDeleteError(null)
+    setDeleteTarget(entry)
+  }, [])
+
+  const closeDelete = useCallback(() => {
+    setDeleteTarget(null)
+    setDeleteError(null)
+    setDeleting(false)
+  }, [])
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return
+    const path = deleteTarget.path
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await fsDelete(path)
+      // Refresh the parent dir so the deleted row disappears. After a delete,
+      // re-list even a directory we haven't expanded as cached so the change is
+      // reflected wherever the row lived (root '' included).
+      await loadDir(dirName(path))
+      // If the deleted file was open, clear the editor back to the empty state.
+      if (selectedRef.current === path) {
+        setSelectedPath(null)
+        setMeta(null)
+        setContent('')
+        setGit(null)
+        setGitError(null)
+        setFileError(null)
+        setDirty(false)
+        baselineRef.current = ''
+      }
+      closeDelete()
+    } catch (e) {
+      setDeleting(false)
+      // 404 = already gone: treat as success (refresh + close) rather than an error.
+      if (e.status === 404) {
+        loadDir(dirName(path))
+        if (selectedRef.current === path) { setSelectedPath(null); setMeta(null); setContent(''); setGit(null) }
+        closeDelete()
+        return
+      }
+      setDeleteError(e.message || 'Could not delete this file.')
+    }
+  }, [deleteTarget, loadDir, closeDelete])
+
   // When the selection changes, load the file + its git status.
   useEffect(() => {
     if (!selectedPath) { setMeta(null); setContent(''); setGit(null); return }
@@ -1489,7 +1612,7 @@ export default function App({ appId }) {
         <div className="ed-empty">
           <div className="ed-empty-mark" aria-hidden="true">⌘</div>
           <div className="ed-empty-title">No file open</div>
-          <p className="ed-empty-text">Open the tree and tap a file to view or edit it — or ask the agent below to make a change.</p>
+          <p className="ed-empty-text">Open the tree and tap a file to view or edit it.</p>
         </div>
       )
     }
@@ -1648,6 +1771,7 @@ export default function App({ appId }) {
                 onToggleDir={toggleDir}
                 onSelectFile={(p) => { selectFile(p); closeNav() }}
                 onFocusDir={focusDir}
+                onDeleteFile={requestDelete}
               />
             ))}
             {treeRedacted.length > 0 && (
@@ -1693,6 +1817,18 @@ export default function App({ appId }) {
           busy={creating}
           onSubmit={submitCreate}
           onCancel={closeCreate}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete file"
+          body={<>Delete <code className="ed-modal-code">/data/{deleteTarget.path}</code>? This can’t be undone here.</>}
+          confirmLabel="Delete"
+          busyLabel="Deleting…"
+          error={deleteError}
+          busy={deleting}
+          onConfirm={confirmDelete}
+          onCancel={closeDelete}
         />
       )}
     </div>
@@ -1761,6 +1897,12 @@ const CSS = `
 /* The Save button when there's nothing to save: present but visually quiet,
    so the toolbar layout doesn't jump when an edit makes it active. */
 .ed-btn-primary.is-quiet { background: var(--surface2, var(--surface)); border-color: var(--border); color: var(--muted); }
+/* Destructive confirm action (delete file). App-specific, so it lives below the
+   shared Button fence. */
+.ed-btn-danger {
+  background: var(--danger); border-color: var(--danger); color: #1a0606;
+}
+.ed-btn-danger:hover { filter: brightness(1.06); }
 .ed-icon-btn {
   flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1856,6 +1998,21 @@ const CSS = `
 .ed-row-focus:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ed-row-focus.is-focused { color: var(--accent); }
 @media (hover: none) { .ed-row-focus { opacity: 0.55; } }
+
+/* Per-file delete affordance — same hover-reveal shape as the dir focus button,
+   tinted danger so it reads as destructive. */
+.ed-row-delete {
+  flex: 0 0 auto; width: 40px; min-height: 44px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0; color: var(--muted);
+  font-size: 13px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.ed-row-wrap:hover .ed-row-delete,
+.ed-row-delete:focus-visible { opacity: 1; }
+.ed-row-delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.ed-row-delete:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
+@media (hover: none) { .ed-row-delete { opacity: 0.55; } }
 
 .ed-row {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
@@ -2047,6 +2204,11 @@ const CSS = `
 .ed-modal-where {
   margin-top: 3px; font-family: var(--mono); font-size: 11.5px; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ed-modal-body { margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.ed-modal-code {
+  font-family: var(--mono); font-size: 12px; color: var(--accent);
+  word-break: break-all;
 }
 .ed-modal-input {
   width: 100%; margin-top: 12px; min-height: 44px; padding: 10px 12px;
