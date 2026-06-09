@@ -1,7 +1,7 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "View and edit any file on your M\u00f6bius, with git status and an agent that can make changes for you.",
   "author": "mobius-os",
   "license": "MIT",

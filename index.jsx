@@ -33,6 +33,11 @@ import katex from 'katex'
 
 const FS = '/api/fs'
 
+// The app's display name, mirrored beside its logo in the drawer brand row to
+// match the shell brand. Fixed (this is the Editor app), so a const rather than
+// a discovered prop.
+const APP_NAME = 'Editor'
+
 // The owner JWT — written by the shell at login. /api/fs/* is owner-only and
 // the app `token` prop is app-scoped (would 401), so we read the owner token
 // here. Read fresh on every call: a 30-day token can be rotated mid-session by
@@ -835,35 +840,24 @@ function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, onOpenF
 // persist, re-apply the system prompt on resume). onTurnDone fires after each
 // agent turn → the App re-reads the open file + refreshes the tree node + git.
 // ----------------------------------------------------------------------
-function agentSystemPrompt(appId) {
+function agentSystemPrompt() {
   return [
-    `You are the Editor app's agent for Möbius app id ${appId}.`,
+    'You help the owner view and edit any file on their Möbius. Paths are',
+    'relative to /data (for example "apps/notes/index.jsx" is',
+    '/data/apps/notes/index.jsx); the injected app_context lists the available',
+    'directories.',
     '',
-    'You have full access to the container filesystem with your normal tools',
-    '(Read, Edit, Write, Bash, Grep, Glob). Your working directory is /data.',
-    'The owner is viewing files in this Editor app — a whole-filesystem viewer',
-    'and editor — and uses you to make changes they would rather not type by',
-    'hand. The owner can see the file tree, the open file, and git status, so',
-    'they are watching what you do.',
-    '',
-    'When the owner asks for a change to a file, MAKE the edit directly with',
-    'your tools — do not just describe it in chat. Prefer editing the file the',
-    'owner is most likely looking at unless they name another. Paths the owner',
-    'sees are relative to /data (for example "apps/notes/index.jsx" is',
-    '/data/apps/notes/index.jsx). Platform code outside /data is root-owned and',
-    'read-only; if a change needs a root-owned file, say so rather than failing',
-    'silently.',
-    '',
-    'After making an edit, summarise what you changed in ONE short sentence —',
-    'the embedded chat panel shows only your last message, and the owner will',
-    'see the file and git status update in the app.',
+    'When the owner asks for a change, MAKE the edit directly with Edit/Write —',
+    'do not just describe it. Prefer the file the owner is most likely looking',
+    'at unless they name another, then say what you changed in one short',
+    'sentence.',
     '',
     'This is a silent setup brief — do NOT reply to it. Wait for the owner’s',
     'first message and act on that.',
   ].join('\n')
 }
 
-function ChatPanel({ appId, chatHeight, onTurnDone }) {
+function ChatPanel({ chatHeight, onTurnDone }) {
   const mountRef = useRef(null)
   const [error, setError] = useState(null)
   // Keep the latest onTurnDone in a ref so the mount effect does not depend on
@@ -872,7 +866,7 @@ function ChatPanel({ appId, chatHeight, onTurnDone }) {
   // the chat iframe (killing a streaming turn) every time the user opens a file.
   const onTurnDoneRef = useRef(onTurnDone)
   useEffect(() => { onTurnDoneRef.current = onTurnDone }, [onTurnDone])
-  const systemPrompt = useMemo(() => agentSystemPrompt(appId), [appId])
+  const systemPrompt = useMemo(() => agentSystemPrompt(), [])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -898,22 +892,14 @@ function ChatPanel({ appId, chatHeight, onTurnDone }) {
     return () => { disposed = true; if (handle) handle.destroy() }
   }, [systemPrompt])
 
-  // When the panel is dragged short, drop the title/hint band so the whole
-  // height goes to the embed — the chat's own composer is pinned at the bottom
-  // of the iframe, so a short panel shows just the input ("full vibe writing").
-  const collapsed = Number.isFinite(chatHeight) && chatHeight < 110
-
+  // The whole height goes to the embed — the chat's own composer is pinned at
+  // the bottom of the iframe and is self-evident, so the app adds no title or
+  // hint band of its own ("full vibe writing").
   return (
     <section
-      className={`ed-chat${collapsed ? ' is-collapsed' : ''}`}
+      className="ed-chat"
       style={Number.isFinite(chatHeight) ? { height: `${chatHeight}px` } : undefined}
     >
-      {!collapsed && (
-        <div className="ed-chat-head">
-          <span className="ed-chat-title">Agent</span>
-          <span className="ed-chat-hint">Ask it to edit any file — you’ll see it change</span>
-        </div>
-      )}
       {error && <div className="ed-chat-error">{error}</div>}
       <div className="ed-chat-embed" ref={mountRef} />
     </section>
@@ -1701,8 +1687,11 @@ export default function App({ appId }) {
 
         <aside className={`ed-drawer${navOpen ? ' is-open' : ''}`} aria-label="File tree" aria-hidden={!navOpen}>
           <div className="ed-drawer-head">
-            <span className="ed-drawer-title">Files</span>
-            <span className="ed-drawer-sub">/data</span>
+            <div className="ed-brand">
+              <img className="ed-brand-logo" src={`/api/apps/${appId}/icon`} width="24" height="24" alt="" />
+              <span className="ed-brand-name">{APP_NAME}</span>
+              <span className="ed-drawer-sub">/data</span>
+            </div>
             <div className="ed-drawer-actions">
               <button
                 type="button"
@@ -1806,7 +1795,7 @@ export default function App({ appId }) {
           >
             <span className="ed-chat-resizer-bar" aria-hidden="true" />
           </div>
-          <ChatPanel appId={appId} chatHeight={chatHeight} onTurnDone={handleTurnDone} />
+          <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} />
         </main>
       </div>
       {createModal && (
@@ -1934,10 +1923,12 @@ const CSS = `
 }
 .ed-drawer.is-open { transform: translateX(0); }
 .ed-drawer-head {
-  flex: 0 0 auto; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
-.ed-drawer-title { font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; }
+.ed-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ed-brand-logo { flex: 0 0 auto; border-radius: 6px; display: block; }
+.ed-brand-name { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
 .ed-drawer-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .ed-drawer-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
 .ed-new-btn {
@@ -1999,20 +1990,22 @@ const CSS = `
 .ed-row-focus.is-focused { color: var(--accent); }
 @media (hover: none) { .ed-row-focus { opacity: 0.55; } }
 
-/* Per-file delete affordance — same hover-reveal shape as the dir focus button,
-   tinted danger so it reads as destructive. */
+/* Per-file delete affordance — always faintly visible (not hover-only) so the
+   control is discoverable on desktop too; it brightens on row hover/focus. On
+   touch (no hover) it sits at full opacity. Tinted danger so it reads as
+   destructive. Mirrors the webstudio kebab visibility pattern. */
 .ed-row-delete {
   flex: 0 0 auto; width: 40px; min-height: 44px; padding: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: 0; color: var(--muted);
   font-size: 13px; line-height: 1; cursor: pointer;
-  opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  opacity: 0.5; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
 .ed-row-wrap:hover .ed-row-delete,
 .ed-row-delete:focus-visible { opacity: 1; }
 .ed-row-delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .ed-row-delete:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
-@media (hover: none) { .ed-row-delete { opacity: 0.55; } }
+@media (hover: none) { .ed-row-delete { opacity: 1; } }
 
 .ed-row {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
@@ -2145,12 +2138,6 @@ const CSS = `
 }
 .ed-chat-embed iframe { display: block; width: 100%; height: 100%; border: 0; }
 /* /mobius-ui:ChatEmbed */
-.ed-chat-head {
-  flex: 0 0 auto; display: flex; align-items: baseline; gap: 10px;
-  padding: 8px 14px; border-bottom: 1px solid var(--border);
-}
-.ed-chat-title { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
-.ed-chat-hint { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-chat-error {
   flex: 0 0 auto; margin: 8px 12px; padding: 8px 12px; border-radius: 10px;
   background: color-mix(in srgb, var(--danger) 12%, transparent);
