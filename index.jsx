@@ -2023,9 +2023,15 @@ const CSS = `
 .ed-row-file.is-selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .ed-row-file.is-selected .ed-row-name { font-weight: 650; color: var(--text); }
 .ed-row-caret { flex: 0 0 auto; width: 20px; font-size: 17px; line-height: 1; color: var(--text); text-align: center; }
+/* File-type glyph — a bare mono token, no box. The shell's icons are bare
+   lucide SVGs with no bounding box; matching that, the glyph keeps its accent
+   color and mono shape but drops the badge-weight (700) that made short tokens
+   like {} / <> / py read as a filled chip. Normal weight reads as a plain
+   glyph beside the filename. */
 .ed-row-glyph {
-  flex: 0 0 auto; width: 18px; text-align: center; font-size: 11px; font-weight: 700;
+  flex: 0 0 auto; width: 18px; text-align: center; font-size: 11px; font-weight: 400;
   color: var(--accent); font-family: var(--mono);
+  background: none; border: 0; padding: 0; border-radius: 0;
 }
 .ed-row-dir .ed-row-name { font-weight: 650; }
 .ed-row-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
