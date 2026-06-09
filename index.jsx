@@ -1271,6 +1271,77 @@ export default function App({ appId }) {
 
   const toggleNav = useCallback(() => { if (navOpen) closeNav(); else openNav() }, [navOpen, closeNav, openNav])
 
+  // Swipe-left-to-close, ported from the Möbius shell Drawer. touchstart
+  // captures the origin (only while open + single touch); touchmove drags the
+  // panel 1:1 with the finger when the gesture is dominantly horizontal-left;
+  // touchend either closes (≥70px past origin AND horizontal-dominant) or snaps
+  // back. The CSS transition is disabled mid-drag via `ed-drawer--dragging` so
+  // the panel tracks the finger, then the normal transform-transition animates
+  // the snap/close once the class is removed.
+  const drawerRef = useRef(null)
+  const dragStart = useRef(null) // { x, y } or null
+
+  function onDrawerTouchStart(e) {
+    // At >=760px the drawer is a static column (no overlay/scrim, toggle hidden),
+    // so a swipe-to-close is meaningless and would briefly slide the static
+    // column before self-healing. Only the narrow overlay layout is swipeable.
+    if (typeof window !== 'undefined' && window.innerWidth >= 760) return
+    if (!navOpen || e.touches.length !== 1) return
+    dragStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+  function onDrawerTouchMove(e) {
+    if (!dragStart.current || e.touches.length !== 1) return
+    const dx = e.touches[0].clientX - dragStart.current.x
+    const dy = e.touches[0].clientY - dragStart.current.y
+    if (dx < 0 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+      const el = drawerRef.current
+      if (!el) return
+      el.classList.add('ed-drawer--dragging')
+      // Cap the drag at the drawer's own rendered width (80%/max-320) so the
+      // panel never slides past fully-closed, matching the shell's -width cap.
+      const w = el.offsetWidth || 320
+      el.style.transform = `translateX(${Math.max(dx, -w)}px)`
+    }
+  }
+  function onDrawerTouchEnd(e) {
+    if (!dragStart.current) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - dragStart.current.x
+    const dy = t.clientY - dragStart.current.y
+    const shouldClose = dx < -70 && Math.abs(dx) > Math.abs(dy) * 1.35
+    const el = drawerRef.current
+    if (el) {
+      el.classList.remove('ed-drawer--dragging')
+      if (shouldClose) {
+        // Animate from the finger position to closed, then clear the inline
+        // transform after the transition so the next open doesn't start from
+        // an inline translateX(-100%) that would fight the .is-open class.
+        el.style.transform = 'translateX(-100%)'
+        const cleanup = () => {
+          if (el) el.style.transform = ''
+          el.removeEventListener('transitionend', cleanup)
+        }
+        el.addEventListener('transitionend', cleanup, { once: true })
+      } else {
+        // Snap back: clearing the inline transform lets the .is-open class's
+        // translateX(0) take over with the transition running from here.
+        el.style.transform = ''
+      }
+    }
+    dragStart.current = null
+    if (shouldClose) closeNav()
+  }
+  // touchcancel positions are unreliable across browsers, so treat cancel as
+  // "snap back, don't close" — never evaluate the close threshold on a cancel.
+  function onDrawerTouchCancel() {
+    const el = drawerRef.current
+    if (el) {
+      el.classList.remove('ed-drawer--dragging')
+      el.style.transform = ''
+    }
+    dragStart.current = null
+  }
+
   // Fetch + cache one directory level unconditionally (refreshDir no-ops for
   // dirs we never expanded; focus + create both need a dir's children fetched
   // on demand). Returns the entries so a caller can act on the result.
@@ -1696,7 +1767,16 @@ export default function App({ appId }) {
         {/* Backdrop — taps close the drawer (mobile) */}
         <div className={`ed-scrim${navOpen ? ' is-open' : ''}`} onClick={closeNav} aria-hidden="true" />
 
-        <aside className={`ed-drawer${navOpen ? ' is-open' : ''}`} aria-label="File tree" aria-hidden={!navOpen}>
+        <aside
+          ref={drawerRef}
+          className={`ed-drawer${navOpen ? ' is-open' : ''}`}
+          aria-label="File tree"
+          aria-hidden={!navOpen}
+          onTouchStart={onDrawerTouchStart}
+          onTouchMove={onDrawerTouchMove}
+          onTouchEnd={onDrawerTouchEnd}
+          onTouchCancel={onDrawerTouchCancel}
+        >
           <div className="ed-drawer-head">
             <span className="ed-drawer-sub">/data</span>
             <div className="ed-drawer-actions">
@@ -1899,14 +1979,21 @@ const CSS = `
   background: var(--danger); border-color: var(--danger); color: #1a0606;
 }
 .ed-btn-danger:hover { filter: brightness(1.06); }
+/* The logo-toggle is BARE like the shell's .shell__brand: no border, no
+   background, no focus ring. A bounding box / outline lingering after the
+   drawer closes reads as a stuck-highlight bug, so there is nothing to leave
+   behind — outline:none on both :focus and :focus-visible, tap-highlight and
+   text-selection suppressed. */
 .ed-icon-btn {
   flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid transparent; background: transparent; color: var(--text);
-  font-size: 18px; cursor: pointer; transition: background 0.14s ease;
+  border: none; background: transparent; color: var(--text);
+  font-size: 18px; cursor: pointer; outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none; user-select: none;
 }
-.ed-icon-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.ed-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ed-icon-btn:focus,
+.ed-icon-btn:focus-visible { outline: none; }
 
 /* Body: drawer + main, side by side on wide, drawer overlays on narrow. */
 .ed-body { flex: 1; min-height: 0; position: relative; display: flex; }
@@ -1929,6 +2016,10 @@ const CSS = `
   transform: translateX(-102%); transition: transform 0.22s ease;
 }
 .ed-drawer.is-open { transform: translateX(0); }
+/* During a swipe-to-close drag, disable the transform-transition so the panel
+   tracks the finger 1:1; removing the class lets the transition animate the
+   snap-back or close. */
+.ed-drawer--dragging { transition: none; }
 .ed-drawer-head {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
