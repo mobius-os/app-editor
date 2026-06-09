@@ -33,11 +33,6 @@ import katex from 'katex'
 
 const FS = '/api/fs'
 
-// The app's display name, mirrored beside its logo in the drawer brand row to
-// match the shell brand. Fixed (this is the Editor app), so a const rather than
-// a discovered prop.
-const APP_NAME = 'Editor'
-
 // The owner JWT — written by the shell at login. /api/fs/* is owner-only and
 // the app `token` prop is app-scoped (would 401), so we read the owner token
 // here. Read fresh on every call: a 30-day token can be rotated mid-session by
@@ -1046,6 +1041,9 @@ export default function App({ appId }) {
 
   // --- Layout ---
   const [navOpen, setNavOpen] = useState(true)
+  // Fall back to the ☰ glyph if the app has no custom icon (the /icon route
+  // 404s) so the drawer toggle never renders a broken-image box.
+  const [iconBroken, setIconBroken] = useState(false)
   const navHandleRef = useRef(null)
   const prefsLoadedRef = useRef(false)
   const restorePathRef = useRef(null)
@@ -1653,13 +1651,26 @@ export default function App({ appId }) {
       <style>{CSS}</style>
 
       <header className="ed-header">
+        {/* The app's own logo is the drawer toggle, mirroring the Möbius shell
+            header where the logo (not a hamburger) opens the drawer. */}
         <button
           className="ed-icon-btn"
           onClick={toggleNav}
           aria-label={navOpen ? 'Close file tree' : 'Open file tree'}
           aria-expanded={navOpen}
         >
-          ☰
+          {iconBroken ? (
+            '☰'
+          ) : (
+            <img
+              src={`/api/apps/${appId}/icon`}
+              width={28}
+              height={28}
+              alt=""
+              style={{ borderRadius: 6, display: 'block' }}
+              onError={() => setIconBroken(true)}
+            />
+          )}
         </button>
         <div className="ed-header-title">
           {openName
@@ -1687,11 +1698,7 @@ export default function App({ appId }) {
 
         <aside className={`ed-drawer${navOpen ? ' is-open' : ''}`} aria-label="File tree" aria-hidden={!navOpen}>
           <div className="ed-drawer-head">
-            <div className="ed-brand">
-              <img className="ed-brand-logo" src={`/api/apps/${appId}/icon`} width="24" height="24" alt="" />
-              <span className="ed-brand-name">{APP_NAME}</span>
-              <span className="ed-drawer-sub">/data</span>
-            </div>
+            <span className="ed-drawer-sub">/data</span>
             <div className="ed-drawer-actions">
               <button
                 type="button"
@@ -1926,9 +1933,6 @@ const CSS = `
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
 }
-.ed-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ed-brand-logo { flex: 0 0 auto; border-radius: 6px; display: block; }
-.ed-brand-name { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
 .ed-drawer-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .ed-drawer-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
 .ed-new-btn {
