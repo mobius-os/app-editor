@@ -2082,6 +2082,13 @@ export default function App({ appId }) {
 // targets, fenced mobius-ui blocks kept in sync with sibling apps.
 // ----------------------------------------------------------------------
 const CSS = `
+/* mobius-ui:Focus v1 -- shared keyboard focus ring (WCAG 2.4.7); never bare outline:none */
+:where(button,a,input,textarea,select,summary,[role="button"],[tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* /mobius-ui:Focus */
+
 /* mobius-ui:Root v1 — keep in sync; library candidate. Diverge below the marker only. */
 .ed-root {
   position: relative;
@@ -2097,7 +2104,9 @@ const CSS = `
 .ed-header {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: 10px;
-  min-height: 48px; padding: 8px 12px;
+  min-height: 48px;
+  /* Top-pinned bar: pad against the notch on an installed PWA (iOS safe area). */
+  padding: max(8px, env(safe-area-inset-top)) 12px 8px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 /* /mobius-ui:Header */
@@ -2145,20 +2154,20 @@ const CSS = `
 }
 @media (hover: hover) { .ed-btn-danger:hover { filter: brightness(1.06); } }
 /* The logo-toggle is BARE like the shell's .shell__brand: no border, no
-   background, no focus ring. A bounding box / outline lingering after the
-   drawer closes reads as a stuck-highlight bug, so there is nothing to leave
-   behind — outline:none on both :focus and :focus-visible, tap-highlight and
-   text-selection suppressed. */
+   background, no focus ring on a non-keyboard (mouse/programmatic) focus. A
+   bounding box lingering after the drawer closes reads as a stuck-highlight
+   bug, so the resting :focus leaves nothing behind. Keyboard focus still gets
+   the shared :focus-visible ring (WCAG 2.4.7) — only the non-keyboard case is
+   suppressed. tap-highlight and text-selection stay suppressed. */
 .ed-icon-btn {
   flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 8px;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; background: transparent; color: var(--text);
-  font-size: 18px; cursor: pointer; outline: none;
+  font-size: 18px; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none; user-select: none;
 }
-.ed-icon-btn:focus,
-.ed-icon-btn:focus-visible { outline: none; }
+.ed-icon-btn:focus:not(:focus-visible) { outline: none; }
 
 /* Body: drawer + main, side by side on wide, drawer overlays on narrow. */
 .ed-body { flex: 1; min-height: 0; position: relative; display: flex; }
@@ -2237,8 +2246,9 @@ const CSS = `
 .ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0 24px; overscroll-behavior: contain; }
 
 /* Directory rows pair the expand button with a focus button. The focus button
-   is hidden until row hover/focus on a pointer device, but always present (and
-   tappable) on touch where there's no hover. */
+   keeps a faint resting opacity on pointer devices (discoverable, not hover-only)
+   and brightens to full on row hover / focus-within; on touch (no hover) it sits
+   at full opacity. */
 .ed-row-wrap { display: flex; align-items: stretch; }
 .ed-row-wrap .ed-row { flex: 1; min-width: 0; }
 .ed-row-focus {
@@ -2246,10 +2256,11 @@ const CSS = `
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: 0; color: var(--muted);
   font-size: 15px; line-height: 1; cursor: pointer;
-  opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  opacity: 0.35; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-row-wrap:hover .ed-row-focus,
+.ed-row-wrap:focus-within .ed-row-focus,
 .ed-row-focus:focus-visible,
 .ed-row-focus.is-focused { opacity: 1; }
 @media (hover: hover) { .ed-row-focus:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); } }
@@ -2267,10 +2278,13 @@ const CSS = `
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: 0; color: var(--muted);
   font-size: 13px; line-height: 1; cursor: pointer;
-  opacity: 0.5; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  /* Resting opacity 0.6 keeps the muted glyph readable (>=3:1 against --surface)
+     while still reading as secondary to the row text; full on hover/focus-within. */
+  opacity: 0.6; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-row-wrap:hover .ed-row-delete,
+.ed-row-wrap:focus-within .ed-row-delete,
 .ed-row-delete:focus-visible { opacity: 1; }
 @media (hover: hover) { .ed-row-delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); } }
 .ed-row-delete:active { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
@@ -2340,7 +2354,7 @@ const CSS = `
 .ed-git-track { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ed-git-counts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .ed-git-count { font-weight: 700; font-size: 11.5px; }
-.ed-git-count.is-staged { color: var(--green, #4ade80); }
+.ed-git-count.is-staged { color: var(--green); }
 .ed-git-count.is-modified { color: var(--accent); }
 .ed-git-count.is-untracked { color: var(--muted); }
 .ed-git-count.is-clean { color: var(--muted); font-weight: 600; }
@@ -2357,7 +2371,7 @@ const CSS = `
 @media (hover: hover) { .ed-git-file:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); } }
 .ed-git-file:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .ed-git-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; }
-.ed-git-dot.is-staged { background: var(--green, #4ade80); }
+.ed-git-dot.is-staged { background: var(--green); }
 .ed-git-dot.is-modified { background: var(--accent); }
 .ed-git-dot.is-untracked { background: var(--muted); }
 .ed-git-file-path { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2376,6 +2390,13 @@ const CSS = `
 .ed-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .ed-pane-scroll { overflow: auto; padding: 14px 16px; }
 .ed-cm-host { flex: 1; min-height: 0; overflow: hidden; }
+/* On a touch device the editor content jumps to >=16px so focusing a non-markdown
+   file (the common .py/.json/.jsx case) doesn't trigger iOS Safari zoom-on-focus.
+   The cmTheme/cmThemePlain JS themes keep their tighter desktop sizes; this only
+   raises the floor where a fingertip-driven focus would otherwise zoom the page. */
+@media (pointer: coarse) {
+  .ed-cm-host .cm-content { font-size: 16px; }
+}
 .ed-readonly-note {
   flex: 0 0 auto; padding: 7px 14px; font-size: 12px; color: var(--muted);
   background: var(--surface2, var(--surface)); border-bottom: 1px solid var(--border);
@@ -2428,9 +2449,11 @@ const CSS = `
 }
 
 /* Draggable divider between the editor pane and the chat panel. touch-action:
-   none so a touch-drag resizes instead of scrolling the page. */
+   none so a touch-drag resizes instead of scrolling the page. "Thin line, fat
+   hit area": the visible bar stays 3px but the grabbable band is ~24px tall so a
+   fingertip can land it between the two scrollable regions. */
 .ed-chat-resizer {
-  flex: 0 0 11px;
+  flex: 0 0 24px;
   display: flex; align-items: center; justify-content: center;
   cursor: ns-resize; touch-action: none;
   background: var(--surface);
@@ -2439,8 +2462,10 @@ const CSS = `
 .ed-chat-resizer:hover,
 .ed-chat-resizer:focus-visible {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  outline: none;
 }
+/* Keyboard focus keeps the shared :focus-visible ring (separator is arrow-key
+   resizable); only the non-keyboard focus is suppressed. */
+.ed-chat-resizer:focus:not(:focus-visible) { outline: none; }
 .ed-chat-resizer-bar {
   width: 44px; height: 3px; border-radius: 999px;
   background: color-mix(in srgb, var(--muted) 65%, transparent);
@@ -2483,7 +2508,8 @@ const CSS = `
   width: 100%; margin-top: 12px; min-height: 44px; padding: 10px 12px;
   border-radius: 10px; border: 1px solid var(--border);
   background: var(--bg); color: var(--text);
-  font-family: var(--mono); font-size: 14px;
+  /* 16px stops iOS Safari zoom-on-focus — don't go lower on a focusable field. */
+  font-family: var(--mono); font-size: 16px;
 }
 .ed-modal-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
 .ed-modal-input[aria-invalid="true"] { border-color: var(--danger); }
@@ -2503,4 +2529,15 @@ const CSS = `
   }
   .ed-icon-btn { display: none; }
 }
+
+/* mobius-ui:ReducedMotion v1 -- honor the OS reduce-motion setting */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* /mobius-ui:ReducedMotion */
 `
