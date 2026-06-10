@@ -97,11 +97,15 @@ async function fsReadText(path) {
 
 // Read a file as a Blob (for image preview). <img src> can't carry an auth
 // header, so we fetch the bytes and convert to an object URL at the call site.
+// cache: 'reload' bypasses the HTTP cache so an image the agent regenerated at
+// the same path returns its FRESH bytes — without it the browser would serve
+// the stale cached body and the preview would show the old image until reopened.
 async function fsReadBlob(path) {
   const tok = ownerToken()
   if (!tok) throw new FsError('Not signed in as the owner.', 401)
   const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}`, {
     headers: { Authorization: `Bearer ${tok}` },
+    cache: 'reload',
   })
   if (!r.ok) throw new FsError(`Could not load the file (${r.status}).`, r.status)
   return r.blob()
@@ -517,9 +521,12 @@ function CodeEditor({ value, markdown: isMd, readOnly, docKey, onChange }) {
 // Image preview. /api/fs/read needs a bearer token, so we fetch the bytes as a
 // blob and convert to an object URL (an <img src> can't carry an auth header).
 // ----------------------------------------------------------------------
-function ImagePreview({ path }) {
+function ImagePreview({ path, reloadKey }) {
   const [url, setUrl] = useState(null)
   const [err, setErr] = useState(null)
+  // reloadKey bumps whenever an agent turn re-read the open file: an image
+  // regenerated at the SAME path doesn't change `path`, so without this dep the
+  // effect would never re-run and the preview would keep showing stale bytes.
   useEffect(() => {
     let live = true
     let revoke = null
@@ -531,7 +538,7 @@ function ImagePreview({ path }) {
       setUrl(u)
     }).catch((e) => { if (live) setErr(e.message || 'Image could not be loaded.') })
     return () => { live = false; if (revoke) URL.revokeObjectURL(revoke) }
-  }, [path])
+  }, [path, reloadKey])
   if (err) return <div className="ed-note">{err}</div>
   if (!url) return <div className="ed-note">Loading image…</div>
   return <img className="ed-img" src={url} alt={baseName(path)} />
@@ -1006,6 +1013,10 @@ export default function App({ appId }) {
   // auto-clears on edit) — it stays until the user saves or reopens the file.
   const [diskNotice, setDiskNotice] = useState(null)
   const [savedAt, setSavedAt] = useState(null)
+  // Bumped every time an agent turn re-reads the open file. The image preview
+  // keys its blob fetch on this so a regenerated image at the SAME path (path
+  // unchanged) reloads its fresh bytes instead of showing the stale render.
+  const [fileReloadKey, setFileReloadKey] = useState(0)
   // The content as last loaded/saved from the server — what we re-read against
   // to decide whether an external (agent) edit changed the file under us.
   const baselineRef = useRef('')
@@ -1023,18 +1034,36 @@ export default function App({ appId }) {
   useEffect(() => { selectedRef.current = selectedPath }, [selectedPath])
 
   // KaTeX's renderToString output (used by the markdown live-preview for
-  // $...$ math) needs katex.min.css for its fonts + fraction rules; the app
-  // iframe doesn't load it, so without this every formula renders as
-  // overlapping fallback glyphs. Inject it once, pinned to the importmap's
-  // katex version. offline_capable is false, so a CDN link is fine.
+  // $...$ math) needs katex.min.css for its fraction/sizing/positioning rules;
+  // without it every formula renders as overlapping fallback glyphs. A plain
+  // CDN <link> is blocked by the prod CSP (style-src does not allow jsdelivr),
+  // so we fetch the stylesheet through the same-origin /api/proxy and inject it
+  // as an inline <style> (style-src allows 'unsafe-inline'). Pinned to the
+  // importmap's katex version. The @font-face URLs inside the sheet stay
+  // CDN-relative and are blocked by font-src, so the glyphs fall back to the
+  // system math font — readable and correctly laid out, which is the bug being
+  // fixed; bundling the woff2 fonts same-origin would be a platform change.
   useEffect(() => {
-    const HREF = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css'
-    if (document.querySelector(`link[data-ed-katex]`)) return
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = HREF
-    link.setAttribute('data-ed-katex', '1')
-    document.head.appendChild(link)
+    if (document.querySelector('style[data-ed-katex]')) return undefined
+    let cancelled = false
+    const CSS_URL = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css'
+    const tok = ownerToken()
+    fetch(`/api/proxy?url=${encodeURIComponent(CSS_URL)}`, {
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+    }).then((r) => {
+      if (!r.ok) throw new Error(`KaTeX CSS proxy failed (${r.status})`)
+      return r.text()
+    }).then((css) => {
+      if (cancelled || document.querySelector('style[data-ed-katex]')) return
+      const style = document.createElement('style')
+      style.setAttribute('data-ed-katex', '1')
+      style.textContent = css
+      document.head.appendChild(style)
+    }).catch(() => {
+      // No math styling — KaTeX still renders, just without its layout rules.
+      // Better than a blocked-resource console error loop.
+    })
+    return () => { cancelled = true }
   }, [])
 
   // --- Git state for the open file's directory ---
@@ -1082,6 +1111,16 @@ export default function App({ appId }) {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteError, setDeleteError] = useState(null)
   const [deleting, setDeleting] = useState(false)
+
+  // --- Switch-away guard: a file path the user tapped while the current buffer
+  // has unsaved edits, held until they confirm discarding. null = no pending
+  // switch. The iframe blocks window.confirm, so this drives an in-app modal. ---
+  const [pendingSwitch, setPendingSwitch] = useState(null)
+
+  // --- Overwrite guard: set when a save found the file changed on disk since
+  // we loaded it (an agent edited it), so we ask before clobbering rather than
+  // silently overwriting. null = no pending overwrite. ---
+  const [pendingOverwrite, setPendingOverwrite] = useState(false)
 
   // Fetch one directory level (uncached). Returns the entries or throws.
   const fetchDir = useCallback(async (dirPath) => {
@@ -1275,6 +1314,46 @@ export default function App({ appId }) {
 
   const toggleNav = useCallback(() => { if (navOpen) closeNav(); else openNav() }, [navOpen, closeNav, openNav])
 
+  // Guard against silently discarding unsaved edits when the user opens a
+  // DIFFERENT file. If the current buffer is dirty, hold the target (plus the
+  // nav-close the tap wanted) and show a confirm modal (the iframe blocks
+  // window.confirm); otherwise switch straight away. Re-selecting the same file
+  // is a no-op switch, so it never prompts. We defer the nav-close to the
+  // confirm so a cancel leaves the user where they were browsing.
+  const attemptSelectFile = useCallback((path, { closeNavAfter = false } = {}) => {
+    if (path && path !== selectedRef.current && dirtyRef.current) {
+      setPendingSwitch({ path, closeNavAfter })
+      return
+    }
+    selectFile(path)
+    if (closeNavAfter) closeNav()
+  }, [selectFile, closeNav])
+
+  const confirmSwitch = useCallback(() => {
+    const target = pendingSwitch
+    setPendingSwitch(null)
+    if (target && target.path) {
+      selectFile(target.path)
+      if (target.closeNavAfter) closeNav()
+    }
+  }, [pendingSwitch, selectFile, closeNav])
+
+  const cancelSwitch = useCallback(() => setPendingSwitch(null), [])
+
+  // The drawer starts OPEN (so the owner sees the tree on launch). On a narrow
+  // viewport it's an overlay, which must be registered with the shell back-nav
+  // so the first Android back press closes it — useState(true) alone renders it
+  // open but skips that registration (openNav only runs on a tap). Register it
+  // once on mount when we're in the overlay layout; the wide layout renders the
+  // drawer as a static column with nothing for back to close, so skip it there.
+  // Runs once; the empty-dep cleanup effect below closes any live handle.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth >= 760) return
+    if (!navOpen) return
+    openNav()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Swipe-left-to-close, ported from the Möbius shell Drawer. touchstart
   // captures the origin (only while open + single touch); touchmove drags the
   // panel 1:1 with the finger when the gesture is dominantly horizontal-left;
@@ -1413,16 +1492,30 @@ export default function App({ appId }) {
       setCreateError('Use a single name — no slashes, and not “.keep”.')
       return
     }
-    // Guard against clobbering an existing entry at the target (the FS write
-    // would otherwise silently overwrite a file's contents with empty).
-    const siblings = childrenByDir[targetDir]
-    if (Array.isArray(siblings) && siblings.some((e) => e.name === name)) {
-      setCreateError(`“${name}” already exists here.`)
-      return
-    }
     setCreating(true)
     setCreateError(null)
     try {
+      // Guard against clobbering an existing entry at the target (the FS write
+      // would otherwise silently overwrite a file's contents with empty). The
+      // collision check needs the target dir's REAL listing: if we only trust a
+      // cached `childrenByDir[targetDir]`, an un-expanded target has no cache
+      // and the guard never fires. Fetch the listing first (loadDir caches it),
+      // and only proceed if the fetch succeeded — refusing to create blind
+      // beats overwriting an unseen file.
+      let siblings = childrenByDir[targetDir]
+      if (!Array.isArray(siblings)) {
+        siblings = await loadDir(targetDir)
+        if (siblings === null) {
+          setCreating(false)
+          setCreateError('Could not check this folder’s contents — try again.')
+          return
+        }
+      }
+      if (siblings.some((e) => e.name === name)) {
+        setCreating(false)
+        setCreateError(`“${name}” already exists here.`)
+        return
+      }
       if (kind === 'folder') {
         await fsWrite(joinPath(joinPath(targetDir, name), '.keep'), '')
       } else {
@@ -1534,9 +1627,9 @@ export default function App({ appId }) {
     if (saveError) setSaveError(null)
   }, [saveError])
 
-  const handleSave = useCallback(async () => {
-    if (!selectedPath || !meta || !meta.writable) return
-    if (savingRef.current) return
+  // The actual write — shared by the normal save and the confirmed-overwrite
+  // path. No divergence check here; the caller decides whether to gate.
+  const writeNow = useCallback(async () => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -1552,7 +1645,42 @@ export default function App({ appId }) {
     } finally {
       setSaving(false)
     }
-  }, [selectedPath, meta, content, loadGit])
+  }, [selectedPath, content, loadGit])
+
+  const handleSave = useCallback(async () => {
+    if (!selectedPath || !meta || !meta.writable) return
+    if (savingRef.current) return
+    // Detect a divergence AT SAVE TIME: re-read the on-disk text and compare to
+    // the baseline we loaded. Previously save was an unconditional overwrite, so
+    // an agent edit that landed without an onTurnDone re-read (or that the user
+    // dismissed) would be silently clobbered. If the disk diverged, ask before
+    // overwriting. A re-read failure is non-fatal — fall through to a plain save
+    // rather than blocking the user from saving at all.
+    try {
+      const diskText = await fsReadText(selectedPath)
+      if (selectedRef.current !== selectedPath) return  // selection moved on
+      if (diskText !== baselineRef.current) {
+        setPendingOverwrite(true)
+        return
+      }
+    } catch {
+      // Couldn't re-read — proceed with the save (best-effort divergence check).
+    }
+    if (selectedRef.current !== selectedPath) return
+    await writeNow()
+  }, [selectedPath, meta, writeNow])
+
+  const confirmOverwrite = useCallback(() => {
+    setPendingOverwrite(false)
+    writeNow()
+  }, [writeNow])
+
+  const cancelOverwrite = useCallback(() => {
+    setPendingOverwrite(false)
+    // Re-read the file so the user can see what's on disk now and reconcile;
+    // their unsaved buffer is preserved by the dirty-guard in loadFile.
+    if (selectedRef.current) loadFile(selectedRef.current, { external: true })
+  }, [loadFile])
 
   // Auto-clear savedAt after 2s so the Save button reverts from "Saved" to
   // neutral without requiring user action.
@@ -1583,6 +1711,9 @@ export default function App({ appId }) {
     if (path) {
       loadFile(path, { external: true })
       loadGit(path)
+      // Force the image preview (if the open file is an image) to re-fetch its
+      // bytes — the agent may have regenerated it at the same path.
+      setFileReloadKey((k) => k + 1)
     }
     // The agent can touch files anywhere — refresh the root plus every
     // currently-expanded directory so new/removed files appear wherever they
@@ -1697,7 +1828,7 @@ export default function App({ appId }) {
     }
     if (meta && meta.is_binary) {
       if (isImagePath(selectedPath) || (meta.mime_type || '').startsWith('image/')) {
-        return <div className="ed-pane ed-pane-scroll"><ImagePreview path={selectedPath} /></div>
+        return <div className="ed-pane ed-pane-scroll"><ImagePreview path={selectedPath} reloadKey={fileReloadKey} /></div>
       }
       return (
         <div className="ed-pane-note">
@@ -1857,7 +1988,7 @@ export default function App({ appId }) {
                 gitRepos={gitRepos}
                 focusRoot={focusRoot}
                 onToggleDir={toggleDir}
-                onSelectFile={(p) => { selectFile(p); closeNav() }}
+                onSelectFile={(p) => attemptSelectFile(p, { closeNavAfter: true })}
                 onFocusDir={focusDir}
                 onDeleteFile={requestDelete}
                 onRetryDir={(p) => loadDirInto(p, { showLoading: true })}
@@ -1878,7 +2009,7 @@ export default function App({ appId }) {
               repoRoot={repoRoot}
               open={gitOpen}
               onToggle={() => setGitOpen((v) => !v)}
-              onOpenFile={(p) => selectFile(p)}
+              onOpenFile={(p) => attemptSelectFile(p)}
             />
           )}
           {diskNotice && <div className="ed-save-error is-notice" role="status">{diskNotice}</div>}
@@ -1918,6 +2049,26 @@ export default function App({ appId }) {
           busy={deleting}
           onConfirm={confirmDelete}
           onCancel={closeDelete}
+        />
+      )}
+      {pendingSwitch && (
+        <ConfirmModal
+          title="Discard unsaved changes?"
+          body={<>You have unsaved edits in <code className="ed-modal-code">{openName}</code>. Opening another file will discard them.</>}
+          confirmLabel="Discard & open"
+          onConfirm={confirmSwitch}
+          onCancel={cancelSwitch}
+        />
+      )}
+      {pendingOverwrite && (
+        <ConfirmModal
+          title="File changed on disk"
+          body={<><code className="ed-modal-code">{openName}</code> changed on disk since you opened it (the agent likely edited it). Saving will overwrite those changes with your version.</>}
+          confirmLabel="Overwrite"
+          busyLabel="Saving…"
+          busy={saving}
+          onConfirm={confirmOverwrite}
+          onCancel={cancelOverwrite}
         />
       )}
     </div>
