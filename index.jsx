@@ -389,7 +389,7 @@ const mdHighlight = HighlightStyle.define([
 
 const cmTheme = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text)' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font)', lineHeight: '1.65', fontSize: '15px' },
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font)', lineHeight: '1.65', fontSize: '15px', overscrollBehavior: 'contain' },
   '.cm-content': { padding: '14px 16px 30vh', caretColor: 'var(--accent)', maxWidth: '760px', margin: '0 auto', width: '100%' },
   '&.cm-focused': { outline: 'none' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
@@ -403,7 +403,7 @@ const cmTheme = EditorView.theme({
 // highlighting, no live preview. Same chrome as the markdown editor.
 const cmThemePlain = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text)' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)', lineHeight: '1.6', fontSize: '13.5px' },
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)', lineHeight: '1.6', fontSize: '13.5px', overscrollBehavior: 'contain' },
   '.cm-content': { padding: '14px 16px 30vh', caretColor: 'var(--accent)' },
   '&.cm-focused': { outline: 'none' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
@@ -638,7 +638,7 @@ function ConfirmModal({ title, body, confirmLabel, busyLabel, error, busy, onCon
 // ----------------------------------------------------------------------
 function FileNode({
   entry, depth, expanded, childrenByDir, redactedByDir, loadingDirs, errorDirs,
-  selectedPath, gitRepos, focusRoot, onToggleDir, onSelectFile, onFocusDir, onDeleteFile,
+  selectedPath, gitRepos, focusRoot, onToggleDir, onSelectFile, onFocusDir, onDeleteFile, onRetryDir,
 }) {
   const isDir = entry.type === 'directory'
   const pad = { paddingLeft: `${8 + depth * 14}px` }
@@ -721,6 +721,9 @@ function FileNode({
           {errorDirs[entry.path] && (
             <div className="ed-row-note is-error" style={{ paddingLeft: `${8 + (depth + 1) * 14}px` }}>
               {errorDirs[entry.path]}
+              {onRetryDir && (
+                <button type="button" className="ed-retry" onClick={() => onRetryDir(entry.path)}>Retry</button>
+              )}
             </div>
           )}
           {kids && kids.map((child) => (
@@ -740,6 +743,7 @@ function FileNode({
               onSelectFile={onSelectFile}
               onFocusDir={onFocusDir}
               onDeleteFile={onDeleteFile}
+              onRetryDir={onRetryDir}
             />
           ))}
           {redacted.length > 0 && (
@@ -1550,6 +1554,14 @@ export default function App({ appId }) {
     }
   }, [selectedPath, meta, content, loadGit])
 
+  // Auto-clear savedAt after 2s so the Save button reverts from "Saved" to
+  // neutral without requiring user action.
+  useEffect(() => {
+    if (!savedAt) return undefined
+    const t = setTimeout(() => setSavedAt(null), 2000)
+    return () => clearTimeout(t)
+  }, [savedAt])
+
   // Cmd/Ctrl-S saves (when writable). A keyboard convenience; the Save button
   // is the primary affordance.
   useEffect(() => {
@@ -1848,6 +1860,7 @@ export default function App({ appId }) {
                 onSelectFile={(p) => { selectFile(p); closeNav() }}
                 onFocusDir={focusDir}
                 onDeleteFile={requestDelete}
+                onRetryDir={(p) => loadDirInto(p, { showLoading: true })}
               />
             ))}
             {treeRedacted.length > 0 && (
@@ -1962,12 +1975,13 @@ const CSS = `
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
   font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
   transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-btn:active { transform: scale(0.97); }
 .ed-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ed-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
 .ed-btn-primary { background: var(--accent); border-color: var(--accent); color: #062016; }
-.ed-btn-primary:hover { filter: brightness(1.06); }
+@media (hover: hover) { .ed-btn-primary:hover { filter: brightness(1.06); } }
 .ed-btn-icon { width: 44px; padding: 0; border-radius: 8px; font-size: 18px; }
 /* /mobius-ui:Button */
 /* The Save button when there's nothing to save: present but visually quiet,
@@ -1978,7 +1992,7 @@ const CSS = `
 .ed-btn-danger {
   background: var(--danger); border-color: var(--danger); color: #1a0606;
 }
-.ed-btn-danger:hover { filter: brightness(1.06); }
+@media (hover: hover) { .ed-btn-danger:hover { filter: brightness(1.06); } }
 /* The logo-toggle is BARE like the shell's .shell__brand: no border, no
    background, no focus ring. A bounding box / outline lingering after the
    drawer closes reads as a stuck-highlight bug, so there is nothing to leave
@@ -2023,6 +2037,7 @@ const CSS = `
 .ed-drawer-head {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 12px 14px; border-bottom: 1px solid var(--border);
+  -webkit-user-select: none; user-select: none;
 }
 .ed-drawer-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .ed-drawer-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
@@ -2032,8 +2047,10 @@ const CSS = `
   background: var(--surface2, var(--surface)); color: var(--text);
   font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
   transition: background 0.14s ease, border-color 0.14s ease;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.ed-new-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: var(--accent); }
+@media (hover: hover) { .ed-new-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: var(--accent); } }
+.ed-new-btn:active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); border-color: var(--accent); }
 .ed-new-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ed-new-btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -2042,14 +2059,17 @@ const CSS = `
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  -webkit-user-select: none; user-select: none;
 }
 .ed-focus-clear {
   flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 30px;
   padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--accent);
   font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.ed-focus-clear:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+@media (hover: hover) { .ed-focus-clear:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); } }
+.ed-focus-clear:active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
 .ed-focus-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ed-focus-path {
   min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--muted);
@@ -2063,7 +2083,7 @@ const CSS = `
 .ed-scroll::-webkit-scrollbar-track { background: transparent; }
 /* /mobius-ui:Scrollskin */
 
-.ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0 24px; }
+.ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0 24px; overscroll-behavior: contain; }
 
 /* Directory rows pair the expand button with a focus button. The focus button
    is hidden until row hover/focus on a pointer device, but always present (and
@@ -2076,11 +2096,13 @@ const CSS = `
   background: transparent; border: 0; color: var(--muted);
   font-size: 15px; line-height: 1; cursor: pointer;
   opacity: 0; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-row-wrap:hover .ed-row-focus,
 .ed-row-focus:focus-visible,
 .ed-row-focus.is-focused { opacity: 1; }
-.ed-row-focus:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+@media (hover: hover) { .ed-row-focus:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); } }
+.ed-row-focus:active { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .ed-row-focus:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ed-row-focus.is-focused { color: var(--accent); }
 @media (hover: none) { .ed-row-focus { opacity: 0.55; } }
@@ -2095,10 +2117,12 @@ const CSS = `
   background: transparent; border: 0; color: var(--muted);
   font-size: 13px; line-height: 1; cursor: pointer;
   opacity: 0.5; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-row-wrap:hover .ed-row-delete,
 .ed-row-delete:focus-visible { opacity: 1; }
-.ed-row-delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+@media (hover: hover) { .ed-row-delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); } }
+.ed-row-delete:active { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
 .ed-row-delete:focus-visible { outline: 2px solid var(--danger); outline-offset: -2px; }
 @media (hover: none) { .ed-row-delete { opacity: 1; } }
 
@@ -2108,8 +2132,10 @@ const CSS = `
   background: transparent; border: 0; color: var(--text);
   font-family: var(--font); font-size: 14px; cursor: pointer;
   transition: background 0.12s ease;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.ed-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+@media (hover: hover) { .ed-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); } }
+.ed-row:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .ed-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .ed-row-file.is-selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .ed-row-file.is-selected .ed-row-name { font-weight: 650; color: var(--text); }
@@ -2142,6 +2168,7 @@ const CSS = `
   margin-left: 6px; padding: 4px 10px; border-radius: 8px; min-height: 44px;
   border: 1px solid var(--border); background: var(--surface2, var(--surface)); color: var(--text);
   font-size: 12px; font-weight: 600; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 
 /* Main column: git bar + editor + chat, stacked. */
@@ -2154,6 +2181,7 @@ const CSS = `
   padding: 8px 12px; text-align: left;
   background: transparent; border: 0; color: var(--text); cursor: pointer;
   font-family: var(--font); font-size: 12.5px;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-git-bar.is-quiet { color: var(--muted); cursor: default; min-height: 34px; font-size: 12px; }
 .ed-git-caret { flex: 0 0 auto; width: 16px; font-size: 14px; line-height: 1; color: var(--muted); }
@@ -2165,7 +2193,7 @@ const CSS = `
 .ed-git-count.is-modified { color: var(--accent); }
 .ed-git-count.is-untracked { color: var(--muted); }
 .ed-git-count.is-clean { color: var(--muted); font-weight: 600; }
-.ed-git-body { padding: 4px 12px 12px; max-height: 34vh; overflow-y: auto; }
+.ed-git-body { padding: 4px 12px 12px; max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; }
 .ed-git-group { margin-top: 8px; }
 .ed-git-group-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 4px; }
 .ed-git-file {
@@ -2173,8 +2201,10 @@ const CSS = `
   padding: 5px 6px; text-align: left; border-radius: 8px;
   background: transparent; border: 0; color: var(--text); cursor: pointer;
   font-family: var(--mono); font-size: 12px;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.ed-git-file:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+@media (hover: hover) { .ed-git-file:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); } }
+.ed-git-file:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .ed-git-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; }
 .ed-git-dot.is-staged { background: var(--green, #4ade80); }
 .ed-git-dot.is-modified { background: var(--accent); }
