@@ -1868,7 +1868,7 @@ export default function App({ appId }) {
   }
 
   const canSave = meta && meta.writable && !meta.is_binary
-  const saveLabel = saving ? 'Saving…' : dirty ? 'Save' : (savedAt ? 'Saved' : 'Save')
+  const saveLabel = saving ? 'Saving…' : 'Save'
 
   return (
     <div className="ed-root">
@@ -1910,7 +1910,7 @@ export default function App({ appId }) {
               onClick={handleSave}
               disabled={saving}
             >
-              {saving ? 'Saving…' : (savedAt ? 'Saved ✓' : 'Save')}
+              {saving ? 'Saving…' : 'Save'}
             </button>
           )}
           <button
