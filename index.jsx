@@ -863,7 +863,7 @@ function agentSystemPrompt() {
   ].join('\n')
 }
 
-function ChatPanel({ chatHeight, onTurnDone }) {
+function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) {
   const mountRef = useRef(null)
   const [error, setError] = useState(null)
   // Keep the latest onTurnDone in a ref so the mount effect does not depend on
@@ -872,6 +872,10 @@ function ChatPanel({ chatHeight, onTurnDone }) {
   // the chat iframe (killing a streaming turn) every time the user opens a file.
   const onTurnDoneRef = useRef(onTurnDone)
   useEffect(() => { onTurnDoneRef.current = onTurnDone }, [onTurnDone])
+  const quickActionsRef = useRef(quickActions)
+  useEffect(() => { quickActionsRef.current = quickActions }, [quickActions])
+  const getContextRef = useRef(getContext)
+  useEffect(() => { getContextRef.current = getContext }, [getContext])
   const systemPrompt = useMemo(() => agentSystemPrompt(), [])
 
   useEffect(() => {
@@ -886,9 +890,14 @@ function ChatPanel({ chatHeight, onTurnDone }) {
     window.mobius.chat({
       mount,
       persist: 'chat_id.json',
-      title: 'Editor agent',
+      title: 'Editor',
       systemPrompt,
       picker: true,
+      quickActions: quickActionsRef.current,
+      getContext: () => {
+        const fn = getContextRef.current
+        return fn ? fn() : null
+      },
       onTurnDone: () => { if (onTurnDoneRef.current) onTurnDoneRef.current() },
       onError: ({ error: e }) => { setError(typeof e === 'string' ? e : 'Embedded chat reported an error.') },
     }).then((h) => {
@@ -1116,6 +1125,20 @@ export default function App({ appId }) {
   // the agent when they need it, not the other way around.
   const [chatOpen, setChatOpen] = useState(false)
   const mainRef = useRef(null)
+
+  const quickActions = useMemo(() => [
+    { label: 'Explain this file', prompt: 'Explain what this file does.' },
+    { label: 'Fix issues in this file', prompt: 'Review and fix issues in the currently open file.' },
+    { label: 'What changed recently?', prompt: 'Summarize what changed recently in this project.' },
+  ], [])
+
+  const getContext = useCallback(() => {
+    return Promise.resolve({
+      openFile: selectedPath || null,
+      dirty: dirty || false,
+      gitSummary: null,
+    })
+  }, [selectedPath, dirty])
 
   // --- Folder focus: when set, the tree renders only this dir's subtree. ---
   const [focusRoot, setFocusRoot] = useState('')
@@ -1917,9 +1940,9 @@ export default function App({ appId }) {
             type="button"
             className={`ed-icon-btn ed-chat-toggle${chatOpen ? ' is-active' : ''}`}
             onClick={() => setChatOpen((v) => !v)}
-            aria-label={chatOpen ? 'Close agent chat' : 'Open agent chat'}
+            aria-label={chatOpen ? 'Close chat' : 'Open chat'}
             aria-pressed={chatOpen}
-            title={chatOpen ? 'Close agent chat' : 'Open agent chat'}
+            title={chatOpen ? 'Close chat' : 'Open chat'}
           >
             <ChatBubbleIcon size={20} />
           </button>
@@ -2035,8 +2058,8 @@ export default function App({ appId }) {
           {diskNotice && <div className="ed-save-error is-notice" role="status">{diskNotice}</div>}
           {saveError && <div className="ed-save-error" role="status">{saveError}</div>}
           <div className="ed-editor-wrap">{renderEditor()}</div>
-          {chatOpen && (
-            <>
+          <>
+            {chatOpen && (
               <div
                 className="ed-chat-resizer"
                 role="separator"
@@ -2048,9 +2071,11 @@ export default function App({ appId }) {
               >
                 <span className="ed-chat-resizer-bar" aria-hidden="true" />
               </div>
-              <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} />
-            </>
-          )}
+            )}
+            <div style={chatOpen ? undefined : { display: 'none' }}>
+              <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
+            </div>
+          </>
         </main>
       </div>
       {createModal && (
