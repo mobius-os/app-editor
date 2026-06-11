@@ -912,6 +912,17 @@ function ChatPanel({ chatHeight, onTurnDone }) {
   )
 }
 
+// Chat bubble icon for the toggle button.
+function ChatBubbleIcon({ size = 20 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
 // ----------------------------------------------------------------------
 // Online/offline. /api/fs/* needs the network — there is no offline mirror —
 // so we track navigator.onLine to show a clean "needs a connection" state
@@ -1073,7 +1084,13 @@ export default function App({ appId }) {
   const [gitOpen, setGitOpen] = useState(false)
 
   // --- Layout ---
-  const [navOpen, setNavOpen] = useState(true)
+  // On mobile (narrow) the drawer overlays the editor — start closed so the
+  // user lands on the editor immediately. On desktop (≥760px) the drawer is
+  // a static column (no overlay), so we start it open there. Best-effort: if
+  // typeof window is undefined (SSR), default open.
+  const [navOpen, setNavOpen] = useState(
+    () => typeof window === 'undefined' || window.innerWidth >= 760,
+  )
   // Fall back to the ☰ glyph if the app has no custom icon (the /icon route
   // 404s) so the drawer toggle never renders a broken-image box.
   const [iconBroken, setIconBroken] = useState(false)
@@ -1095,6 +1112,9 @@ export default function App({ appId }) {
   // editor pane takes the rest. mainRef measures the available column so a drag
   // can clamp against the real container height.
   const [chatHeight, setChatHeight] = useState(() => readChatHeight(appId))
+  // Chat starts collapsed — the editor is the primary surface; the user opens
+  // the agent when they need it, not the other way around.
+  const [chatOpen, setChatOpen] = useState(false)
   const mainRef = useRef(null)
 
   // --- Folder focus: when set, the tree renders only this dir's subtree. ---
@@ -1340,19 +1360,9 @@ export default function App({ appId }) {
 
   const cancelSwitch = useCallback(() => setPendingSwitch(null), [])
 
-  // The drawer starts OPEN (so the owner sees the tree on launch). On a narrow
-  // viewport it's an overlay, which must be registered with the shell back-nav
-  // so the first Android back press closes it — useState(true) alone renders it
-  // open but skips that registration (openNav only runs on a tap). Register it
-  // once on mount when we're in the overlay layout; the wide layout renders the
-  // drawer as a static column with nothing for back to close, so skip it there.
-  // Runs once; the empty-dep cleanup effect below closes any live handle.
-  useEffect(() => {
-    if (typeof window === 'undefined' || window.innerWidth >= 760) return
-    if (!navOpen) return
-    openNav()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // On desktop (≥760px) the drawer is already pinned-open by state initialization.
+  // On mobile it starts closed — nothing to register on mount.
+  // The cleanup effect below still tears down any live shell nav handle on unmount.
 
   // Swipe-left-to-close, ported from the Möbius shell Drawer. touchstart
   // captures the origin (only while open + single touch); touchmove drags the
@@ -1894,15 +1904,25 @@ export default function App({ appId }) {
         </div>
         <div className="ed-header-right">
           {!online && <span className="ed-offline-pill" title="The Editor needs a connection">Offline</span>}
-          {selectedPath && canSave && (
+          {selectedPath && canSave && dirty && (
             <button
-              className={`ed-btn ed-btn-primary${dirty ? '' : ' is-quiet'}`}
+              className="ed-btn ed-btn-primary"
               onClick={handleSave}
-              disabled={!dirty || saving}
+              disabled={saving}
             >
-              {saveLabel}
+              {saving ? 'Saving…' : (savedAt ? 'Saved ✓' : 'Save')}
             </button>
           )}
+          <button
+            type="button"
+            className={`ed-icon-btn ed-chat-toggle${chatOpen ? ' is-active' : ''}`}
+            onClick={() => setChatOpen((v) => !v)}
+            aria-label={chatOpen ? 'Close agent chat' : 'Open agent chat'}
+            aria-pressed={chatOpen}
+            title={chatOpen ? 'Close agent chat' : 'Open agent chat'}
+          >
+            <ChatBubbleIcon size={20} />
+          </button>
         </div>
       </header>
 
@@ -2015,18 +2035,22 @@ export default function App({ appId }) {
           {diskNotice && <div className="ed-save-error is-notice" role="status">{diskNotice}</div>}
           {saveError && <div className="ed-save-error" role="status">{saveError}</div>}
           <div className="ed-editor-wrap">{renderEditor()}</div>
-          <div
-            className="ed-chat-resizer"
-            role="separator"
-            aria-label="Resize chat and editor areas"
-            aria-orientation="horizontal"
-            tabIndex={0}
-            onPointerDown={beginChatResize}
-            onKeyDown={onResizerKey}
-          >
-            <span className="ed-chat-resizer-bar" aria-hidden="true" />
-          </div>
-          <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} />
+          {chatOpen && (
+            <>
+              <div
+                className="ed-chat-resizer"
+                role="separator"
+                aria-label="Resize chat and editor areas"
+                aria-orientation="horizontal"
+                tabIndex={0}
+                onPointerDown={beginChatResize}
+                onKeyDown={onResizerKey}
+              >
+                <span className="ed-chat-resizer-bar" aria-hidden="true" />
+              </div>
+              <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} />
+            </>
+          )}
         </main>
       </div>
       {createModal && (
@@ -2521,13 +2545,20 @@ const CSS = `
 }
 .ed-modal-actions { margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px; }
 
+/* Chat toggle — keep visible on desktop too (it's in the header, always needed). */
+.ed-chat-toggle { flex: 0 0 auto; }
+.ed-chat-toggle.is-active { color: var(--accent); }
+@media (hover: hover) { .ed-chat-toggle:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); } }
+
 /* On a wide viewport the drawer is a static column, not an overlay. */
 @media (min-width: 760px) {
   .ed-scrim { display: none; }
   .ed-drawer {
     position: relative; transform: none; flex: 0 0 280px; max-width: 280px;
   }
-  .ed-icon-btn { display: none; }
+  /* Hide drawer hamburger on desktop — drawer is always visible as a column.
+     But keep the chat toggle visible on all screen sizes. */
+  .ed-icon-btn:not(.ed-chat-toggle) { display: none; }
 }
 
 /* mobius-ui:ReducedMotion v1 -- honor the OS reduce-motion setting */
