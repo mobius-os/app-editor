@@ -976,19 +976,23 @@ function savePrefs(prefs) {
 // expanded-dir set does. The MIN is low enough that dragging the divider to
 // the bottom collapses the chat transcript to just its composer band (the
 // composer is pinned at the bottom of the chat iframe — "full vibe writing").
+// Nothing stored yet → readChatHeight returns null and the first open spawns
+// the chat at half the main column (the house 50/50 split latex/webstudio
+// use); CHAT_DEFAULT_PX only backstops an unmeasurable container.
 // ----------------------------------------------------------------------
 const CHAT_HEIGHT_VERSION = 1
 const CHAT_MIN_PX = 60
 const CHAT_DEFAULT_PX = 280
+const CHAT_SPAWN_RATIO = 0.5
 
 function chatHeightKey(appId) {
   return `editor:${appId}:chat-height:v${CHAT_HEIGHT_VERSION}`
 }
 
 function readChatHeight(appId) {
-  if (typeof localStorage === 'undefined') return CHAT_DEFAULT_PX
+  if (typeof localStorage === 'undefined') return null
   const raw = Number(localStorage.getItem(chatHeightKey(appId)))
-  if (!Number.isFinite(raw) || raw <= 0) return CHAT_DEFAULT_PX
+  if (!Number.isFinite(raw) || raw <= 0) return null
   return Math.max(CHAT_MIN_PX, raw)
 }
 
@@ -1119,8 +1123,13 @@ export default function App({ appId }) {
   const dirGenRef = useRef(new Map())
   // Resizable chat/editor split. chatHeight is the chat panel's px height; the
   // editor pane takes the rest. mainRef measures the available column so a drag
-  // can clamp against the real container height.
-  const [chatHeight, setChatHeight] = useState(() => readChatHeight(appId))
+  // can clamp against the real container height. Until the user has chosen a
+  // height (drag/keyboard, or a restored value from a previous session) the
+  // height is "untouched": the first open replaces it with the 50/50 spawn and
+  // nothing is persisted, so the spawn ratio keeps applying on fresh devices.
+  const storedChatHeight = readChatHeight(appId)
+  const [chatHeight, setChatHeight] = useState(() => storedChatHeight ?? CHAT_DEFAULT_PX)
+  const chatHeightTouched = useRef(storedChatHeight != null)
   // Chat starts collapsed — the editor is the primary surface; the user opens
   // the agent when they need it, not the other way around.
   const [chatOpen, setChatOpen] = useState(false)
@@ -1757,17 +1766,35 @@ export default function App({ appId }) {
   }, [loadFile, loadGit, refreshDir])
 
   // --- Chat/editor split resize ---
-  // Persist the panel height (best-effort, per app). The drag itself is a
+  // Persist the panel height (best-effort, per app) — but only once the user
+  // has actually chosen one; persisting the untouched default would defeat the
+  // 50/50 spawn forever after the first visit. The drag itself is a
   // pointer-capture loop on the divider: pointerdown records the start, each
   // pointermove sets chatHeight clamped between CHAT_MIN_PX and
   // (containerHeight - CHAT_MIN_PX) so neither pane can vanish, pointerup ends.
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
+    if (!chatHeightTouched.current) return
     try { localStorage.setItem(chatHeightKey(appId), String(Math.round(chatHeight))) } catch {}
   }, [appId, chatHeight])
 
+  // Opening the chat for the first time (no height chosen yet) spawns it at
+  // half the main column — the house 50/50 split. After that the user's own
+  // height (dragged or restored) wins.
+  const toggleChat = useCallback(() => {
+    if (!chatOpen && !chatHeightTouched.current) {
+      const total = mainRef.current ? mainRef.current.getBoundingClientRect().height : 0
+      if (total) {
+        const maxPx = Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX)
+        setChatHeight(Math.min(maxPx, Math.max(CHAT_MIN_PX, Math.round(total * CHAT_SPAWN_RATIO))))
+      }
+    }
+    setChatOpen(!chatOpen)
+  }, [chatOpen])
+
   const beginChatResize = useCallback((event) => {
     event.preventDefault()
+    chatHeightTouched.current = true
     const container = mainRef.current
     if (!container) return
     const total = container.getBoundingClientRect().height
@@ -1792,6 +1819,7 @@ export default function App({ appId }) {
   // Keyboard resize for the divider (it's a focusable separator): arrows nudge,
   // Home/End jump to the extremes the drag can reach.
   const nudgeChat = useCallback((deltaPx) => {
+    chatHeightTouched.current = true
     const container = mainRef.current
     const total = container ? container.getBoundingClientRect().height : 0
     const maxPx = total ? Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX) : Infinity
@@ -1803,11 +1831,13 @@ export default function App({ appId }) {
     else if (event.key === 'ArrowDown') { event.preventDefault(); nudgeChat(-24) }
     else if (event.key === 'Home') {
       event.preventDefault()
+      chatHeightTouched.current = true
       const container = mainRef.current
       const total = container ? container.getBoundingClientRect().height : 0
       setChatHeight(total ? Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX) : chatHeight)
     } else if (event.key === 'End') {
       event.preventDefault()
+      chatHeightTouched.current = true
       setChatHeight(CHAT_MIN_PX)
     }
   }, [nudgeChat, chatHeight])
@@ -1939,7 +1969,7 @@ export default function App({ appId }) {
           <button
             type="button"
             className={`ed-icon-btn ed-chat-toggle${chatOpen ? ' is-active' : ''}`}
-            onClick={() => setChatOpen((v) => !v)}
+            onClick={toggleChat}
             aria-label={chatOpen ? 'Close chat' : 'Open chat'}
             aria-pressed={chatOpen}
             title={chatOpen ? 'Close chat' : 'Open chat'}
@@ -2072,7 +2102,7 @@ export default function App({ appId }) {
                 <span className="ed-chat-resizer-bar" aria-hidden="true" />
               </div>
             )}
-            <div style={chatOpen ? undefined : { display: 'none' }}>
+            <div className="ed-chat-slot" style={chatOpen ? undefined : { display: 'none' }}>
               <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
             </div>
           </>
@@ -2490,6 +2520,11 @@ const CSS = `
 }
 .ed-chat-embed iframe { display: block; width: 100%; height: 100%; border: 0; }
 /* /mobius-ui:ChatEmbed */
+/* The slot exists only so the chat iframe stays mounted while hidden (a
+   remount kills a streaming turn). flex: 0 0 auto pins it to the pane's own
+   height so editor-side overflow can never squash the chat (and its
+   bottom-pinned composer) out of view. */
+.ed-chat-slot { flex: 0 0 auto; display: flex; flex-direction: column; }
 .ed-chat-error {
   flex: 0 0 auto; margin: 8px 12px; padding: 8px 12px; border-radius: 10px;
   background: color-mix(in srgb, var(--danger) 12%, transparent);
@@ -2497,16 +2532,28 @@ const CSS = `
   color: var(--text); font-size: 12.5px;
 }
 
-/* Draggable divider between the editor pane and the chat panel. touch-action:
-   none so a touch-drag resizes instead of scrolling the page. "Thin line, fat
-   hit area": the visible bar stays 3px but the grabbable band is ~24px tall so a
-   fingertip can land it between the two scrollable regions. */
+/* The draggable divider between the editor pane and the chat panel: a SLIM
+   10px visual bar (the house style — same recipe as latex/webstudio); the
+   ::before overlay extends the pointer hit area to ~26px without adding
+   visual weight. z-index keeps the overlay above the adjacent panes so the
+   extra hit area actually receives the pointer. touch-action: none so a
+   touch-drag resizes instead of scrolling the page. */
 .ed-chat-resizer {
-  flex: 0 0 24px;
+  flex: 0 0 10px;
+  height: 10px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 5;
   display: flex; align-items: center; justify-content: center;
-  cursor: ns-resize; touch-action: none;
+  cursor: ns-resize; touch-action: none; user-select: none;
   background: var(--surface);
   border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.ed-chat-resizer::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: -8px; bottom: -8px;
 }
 .ed-chat-resizer:hover,
 .ed-chat-resizer:focus-visible {
@@ -2514,10 +2561,12 @@ const CSS = `
 }
 /* Keyboard focus keeps the shared :focus-visible ring (separator is arrow-key
    resizable); only the non-keyboard focus is suppressed. */
+.ed-chat-resizer:focus-visible { outline-offset: -2px; }
 .ed-chat-resizer:focus:not(:focus-visible) { outline: none; }
 .ed-chat-resizer-bar {
-  width: 44px; height: 3px; border-radius: 999px;
+  width: 44px; height: 4px; border-radius: 999px;
   background: color-mix(in srgb, var(--muted) 65%, transparent);
+  pointer-events: none;
 }
 
 /* mobius-ui:Spinner v1 — keep in sync; library candidate. */
