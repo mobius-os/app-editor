@@ -932,6 +932,23 @@ function ChatBubbleIcon({ size = 20 }) {
   )
 }
 
+// The app's identity glyph in the top bar — a document + pencil drawn in the
+// same stroke style as the rest of the editor's inline icons (currentColor,
+// 24-grid, round caps). Inline SVG, so it paints instantly with zero network:
+// the previous `<img src=/api/apps/${appId}/icon>` cost a fetch and flashed a
+// broken-image box on the cold/offline path before the onError fallback fired.
+function EditorLogoIcon({ size = 28 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
+      <path d="M13 3v5h5" />
+      <path d="M18.5 13.5l3 3L16 22l-3 .5.5-3z" />
+    </svg>
+  )
+}
+
 // ----------------------------------------------------------------------
 // Online/offline. /api/fs/* needs the network — there is no offline mirror —
 // so we track navigator.onLine to show a clean "needs a connection" state
@@ -973,15 +990,34 @@ function savePrefs(prefs) {
 // Chat/editor split height. Persisted to localStorage (keyed by app) rather
 // than ui-prefs.json — it's a px layout preference that changes on every drag
 // and we don't want each pixel hitting the storage round-trip the way the
-// expanded-dir set does. The MIN is low enough that dragging the divider to
-// the bottom collapses the chat transcript to just its composer band (the
-// composer is pinned at the bottom of the chat iframe — "full vibe writing").
+// expanded-dir set does.
+//
+// Resize bounds are PIXELS derived from the embed's composer pill, never a
+// fraction of the column. The chat-pane MINIMUM equals the composer
+// input-pill band (CHAT_MIN_PX): dragging the divider all the way down
+// collapses the chat TRANSCRIPT to zero but leaves the pill fully visible
+// (the composer is pinned at the bottom of the chat iframe — "full vibe
+// writing"), and the chat can never shrink below it. The MAXIMUM is the
+// column height minus the divider, so the editor pane above CAN collapse to
+// zero while the pill — and the divider you grab to come back — stay on
+// screen. CHAT_MIN_PX = the embed pill (≈48px) + its 8px/8px foot padding
+// ≈ 64px; the shell publishes the live foot height as the `--composer-h`
+// CSS var (default 80px in ChatView.css), but the embed strips the device
+// safe-area gutter, so the steadier ~64px constant is what the panel floors
+// to rather than reading a relayed height across three frames.
 // Nothing stored yet → readChatHeight returns null and the first open spawns
 // the chat at half the main column (the house 50/50 split latex/webstudio
 // use); CHAT_DEFAULT_PX only backstops an unmeasurable container.
 // ----------------------------------------------------------------------
 const CHAT_HEIGHT_VERSION = 1
-const CHAT_MIN_PX = 60
+// Chat-pane floor: the embedded composer input-pill band must always be fully
+// visible (≈48px pill + 8px/8px foot padding). Keep in sync with the embed's
+// `.chat-embed .chat__foot` padding in the shell.
+const CHAT_MIN_PX = 64
+// The draggable divider's own height — kept reachable at the top extreme so the
+// editor can collapse to zero without the grab handle going with it. Mirrors
+// `.ed-chat-resizer` flex-basis in CSS.
+const CHAT_DIVIDER_PX = 10
 const CHAT_DEFAULT_PX = 280
 const CHAT_SPAWN_RATIO = 0.5
 
@@ -1104,9 +1140,6 @@ export default function App({ appId }) {
   const [navOpen, setNavOpen] = useState(
     () => typeof window === 'undefined' || window.innerWidth >= 760,
   )
-  // Fall back to the ☰ glyph if the app has no custom icon (the /icon route
-  // 404s) so the drawer toggle never renders a broken-image box.
-  const [iconBroken, setIconBroken] = useState(false)
   const navHandleRef = useRef(null)
   const prefsLoadedRef = useRef(false)
   const restorePathRef = useRef(null)
@@ -1778,6 +1811,12 @@ export default function App({ appId }) {
     try { localStorage.setItem(chatHeightKey(appId), String(Math.round(chatHeight))) } catch {}
   }, [appId, chatHeight])
 
+  // The chat-pane MAX for a given column height: fill everything except the
+  // divider, so the editor above can collapse to zero while the divider (and
+  // therefore the pill below it) stay on screen. Floors at CHAT_MIN_PX so a
+  // tiny column can't invert the clamp.
+  const maxChatPx = useCallback((total) => Math.max(CHAT_MIN_PX, total - CHAT_DIVIDER_PX), [])
+
   // Opening the chat for the first time (no height chosen yet) spawns it at
   // half the main column — the house 50/50 split. After that the user's own
   // height (dragged or restored) wins.
@@ -1785,12 +1824,12 @@ export default function App({ appId }) {
     if (!chatOpen && !chatHeightTouched.current) {
       const total = mainRef.current ? mainRef.current.getBoundingClientRect().height : 0
       if (total) {
-        const maxPx = Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX)
+        const maxPx = maxChatPx(total)
         setChatHeight(Math.min(maxPx, Math.max(CHAT_MIN_PX, Math.round(total * CHAT_SPAWN_RATIO))))
       }
     }
     setChatOpen(!chatOpen)
-  }, [chatOpen])
+  }, [chatOpen, maxChatPx])
 
   const beginChatResize = useCallback((event) => {
     event.preventDefault()
@@ -1801,9 +1840,9 @@ export default function App({ appId }) {
     if (!total) return
     const startY = event.clientY
     const startHeight = chatHeight
-    const maxPx = Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX)
-    // Dragging the divider DOWN shrinks the chat; clamp so the editor keeps at
-    // least CHAT_MIN_PX too.
+    // MIN = the composer pill band (transcript collapses to zero, pill stays);
+    // MAX = column minus the divider (editor collapses to zero, divider stays).
+    const maxPx = maxChatPx(total)
     const onMove = (moveEvent) => {
       const next = startHeight + (startY - moveEvent.clientY)
       setChatHeight(Math.min(maxPx, Math.max(CHAT_MIN_PX, next)))
@@ -1814,7 +1853,7 @@ export default function App({ appId }) {
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp, { once: true })
-  }, [chatHeight])
+  }, [chatHeight, maxChatPx])
 
   // Keyboard resize for the divider (it's a focusable separator): arrows nudge,
   // Home/End jump to the extremes the drag can reach.
@@ -1822,9 +1861,9 @@ export default function App({ appId }) {
     chatHeightTouched.current = true
     const container = mainRef.current
     const total = container ? container.getBoundingClientRect().height : 0
-    const maxPx = total ? Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX) : Infinity
+    const maxPx = total ? maxChatPx(total) : Infinity
     setChatHeight((v) => Math.min(maxPx, Math.max(CHAT_MIN_PX, v + deltaPx)))
-  }, [])
+  }, [maxChatPx])
 
   const onResizerKey = useCallback((event) => {
     if (event.key === 'ArrowUp') { event.preventDefault(); nudgeChat(24) }
@@ -1834,13 +1873,13 @@ export default function App({ appId }) {
       chatHeightTouched.current = true
       const container = mainRef.current
       const total = container ? container.getBoundingClientRect().height : 0
-      setChatHeight(total ? Math.max(CHAT_MIN_PX, total - CHAT_MIN_PX) : chatHeight)
+      setChatHeight(total ? maxChatPx(total) : chatHeight)
     } else if (event.key === 'End') {
       event.preventDefault()
       chatHeightTouched.current = true
       setChatHeight(CHAT_MIN_PX)
     }
-  }, [nudgeChat, chatHeight])
+  }, [nudgeChat, chatHeight, maxChatPx])
 
   useEffect(() => () => { try { navHandleRef.current?.close?.() } catch {} navHandleRef.current = null }, [])
 
@@ -1929,25 +1968,16 @@ export default function App({ appId }) {
 
       <header className="ed-header">
         {/* The app's own logo is the drawer toggle, mirroring the Möbius shell
-            header where the logo (not a hamburger) opens the drawer. */}
+            header where the logo (not a hamburger) opens the drawer. Inline
+            glyph (not the /api/apps/<id>/icon image) so it paints instantly,
+            never flashes a broken-image box, and works offline. */}
         <button
           className="ed-icon-btn"
           onClick={toggleNav}
           aria-label={navOpen ? 'Close file tree' : 'Open file tree'}
           aria-expanded={navOpen}
         >
-          {iconBroken ? (
-            '☰'
-          ) : (
-            <img
-              src={`/api/apps/${appId}/icon`}
-              width={28}
-              height={28}
-              alt=""
-              style={{ borderRadius: 6, display: 'block' }}
-              onError={() => setIconBroken(true)}
-            />
-          )}
+          <EditorLogoIcon size={28} />
         </button>
         <div className="ed-header-title">
           {openName
@@ -2505,13 +2535,14 @@ const CSS = `
 .ed-empty-tree { padding: 28px 20px; }
 
 /* mobius-ui:ChatEmbed v1 — keep in sync; library candidate. Diverge below the marker only. */
-/* Height is driven inline from the resizable split (chatHeight px); the 60px
-   floor matches CHAT_MIN_PX so dragging the divider down collapses the chat to
-   just its pinned composer band ("full vibe writing"). */
+/* Height is driven inline from the resizable split (chatHeight px); the 64px
+   floor matches CHAT_MIN_PX (the embed's composer pill band) so dragging the
+   divider down collapses the chat transcript to just its pinned composer band
+   ("full vibe writing") while the pill stays fully visible. */
 .ed-chat {
   flex: 0 0 auto;
   display: flex; flex-direction: column;
-  height: 280px; min-height: 60px;
+  height: 280px; min-height: 64px;
   border-top: 1px solid var(--border); background: var(--surface);
 }
 .ed-chat-embed {
