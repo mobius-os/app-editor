@@ -932,23 +932,6 @@ function ChatBubbleIcon({ size = 20 }) {
   )
 }
 
-// The app's identity glyph in the top bar — a document + pencil drawn in the
-// same stroke style as the rest of the editor's inline icons (currentColor,
-// 24-grid, round caps). Inline SVG, so it paints instantly with zero network:
-// the previous `<img src=/api/apps/${appId}/icon>` cost a fetch and flashed a
-// broken-image box on the cold/offline path before the onError fallback fired.
-function EditorLogoIcon({ size = 28 }) {
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-      strokeLinejoin="round" aria-hidden>
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
-      <path d="M13 3v5h5" />
-      <path d="M18.5 13.5l3 3L16 22l-3 .5.5-3z" />
-    </svg>
-  )
-}
-
 // ----------------------------------------------------------------------
 // Online/offline. /api/fs/* needs the network — there is no offline mirror —
 // so we track navigator.onLine to show a clean "needs a connection" state
@@ -1967,17 +1950,31 @@ export default function App({ appId }) {
       <style>{CSS}</style>
 
       <header className="ed-header">
-        {/* The app's own logo is the drawer toggle, mirroring the Möbius shell
-            header where the logo (not a hamburger) opens the drawer. Inline
-            glyph (not the /api/apps/<id>/icon image) so it paints instantly,
-            never flashes a broken-image box, and works offline. */}
+        {/* The app's own glossy icon is the drawer toggle, mirroring the Möbius
+            shell header where the logo (not a hamburger) opens the drawer. The
+            real icon image — the backend serves a downscaled ~6KB copy at
+            ?size=64 (cached 1h), so it paints fast without the old full-res PNG
+            cost; the accent-dot fallback shows when an install has no custom
+            icon (the route 404s). */}
         <button
           className="ed-icon-btn"
           onClick={toggleNav}
           aria-label={navOpen ? 'Close file tree' : 'Open file tree'}
           aria-expanded={navOpen}
         >
-          <EditorLogoIcon size={28} />
+          <img
+            src={`/api/apps/${appId}/icon?size=64`}
+            alt=""
+            width={26}
+            height={26}
+            className="ed-brand-icon"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none'
+              const f = e.currentTarget.nextElementSibling
+              if (f) f.style.display = 'flex'
+            }}
+          />
+          <span className="ed-brand-fallback" style={{ display: 'none' }} aria-hidden="true" />
         </button>
         <div className="ed-header-title">
           {openName
@@ -2277,6 +2274,17 @@ const CSS = `
   -webkit-user-select: none; user-select: none;
 }
 .ed-icon-btn:focus:not(:focus-visible) { outline: none; }
+/* The real app icon as the brand mark inside the drawer toggle. */
+.ed-brand-icon {
+  width: 26px; height: 26px; border-radius: 6px; object-fit: cover;
+  flex-shrink: 0; display: block;
+}
+/* Accent-dot fallback shown when the install has no custom icon (route 404s). */
+.ed-brand-fallback {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent, var(--text));
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
 
 /* Body: drawer + main, side by side on wide, drawer overlays on narrow. */
 .ed-body { flex: 1; min-height: 0; position: relative; display: flex; }
