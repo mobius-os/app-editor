@@ -1952,9 +1952,10 @@ export default function App({ appId }) {
       <header className="ed-header">
         {/* The app's own glossy icon is the drawer toggle, mirroring the Möbius
             shell header where the logo (not a hamburger) opens the drawer. The
-            real icon image — the backend serves a downscaled ~6KB copy at
-            ?size=64 (cached 1h), so it paints fast without the old full-res PNG
-            cost; the accent-dot fallback shows when an install has no custom
+            real icon image — the backend serves a downscaled copy at
+            ?size=128 (cached 1h), so it paints crisp at the larger 44px size
+            without the old full-res PNG cost; the accent-dot fallback shows
+            when an install has no custom
             icon (the route 404s). */}
         <button
           className="ed-icon-btn"
@@ -1963,10 +1964,10 @@ export default function App({ appId }) {
           aria-expanded={navOpen}
         >
           <img
-            src={`/api/apps/${appId}/icon?size=64`}
+            src={`/api/apps/${appId}/icon?size=128`}
             alt=""
-            width={26}
-            height={26}
+            width={44}
+            height={44}
             className="ed-brand-icon"
             onError={(e) => {
               e.currentTarget.style.display = 'none'
@@ -2276,7 +2277,7 @@ const CSS = `
 .ed-icon-btn:focus:not(:focus-visible) { outline: none; }
 /* The real app icon as the brand mark inside the drawer toggle. */
 .ed-brand-icon {
-  width: 26px; height: 26px; border-radius: 6px; object-fit: cover;
+  width: 44px; height: 44px; border-radius: 10px; object-fit: cover;
   flex-shrink: 0; display: block;
 }
 /* Accent-dot fallback shown when the install has no custom icon (route 404s). */
