@@ -1966,8 +1966,8 @@ export default function App({ appId }) {
           <img
             src={`/api/apps/${appId}/icon?size=128`}
             alt=""
-            width={44}
-            height={44}
+            width={36}
+            height={36}
             className="ed-brand-icon"
             onError={(e) => {
               e.currentTarget.style.display = 'none'
@@ -2277,7 +2277,7 @@ const CSS = `
 .ed-icon-btn:focus:not(:focus-visible) { outline: none; }
 /* The real app icon as the brand mark inside the drawer toggle. */
 .ed-brand-icon {
-  width: 44px; height: 44px; border-radius: 10px; object-fit: cover;
+  width: 36px; height: 36px; border-radius: 8px; object-fit: cover;
   flex-shrink: 0; display: block;
 }
 /* Accent-dot fallback shown when the install has no custom icon (route 404s). */
