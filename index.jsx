@@ -2271,10 +2271,34 @@ const CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   border: none; background: transparent; color: var(--text);
   font-size: 18px; cursor: pointer;
+  transition: color 0.12s, background 0.12s, transform 0.08s;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none; user-select: none;
 }
 .ed-icon-btn:focus:not(:focus-visible) { outline: none; }
+/* Brand drawer-toggle feedback — match the shell drawer toggle's polish.
+   Scoped to :not(.ed-chat-toggle) so the chat toggle keeps its own accent
+   hover/is-active treatment below. Hover is a neutral grey wash; the press
+   scales for an instant touch acknowledgement (tap-highlight is suppressed);
+   focus-visible gets the shell's accent ring. */
+@media (hover: hover) {
+  .ed-icon-btn:not(.ed-chat-toggle):hover { background: var(--surface); }
+}
+.ed-icon-btn:not(.ed-chat-toggle):active { transform: scale(0.92); }
+.ed-icon-btn:not(.ed-chat-toggle):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Open state — the brand button is the drawer toggle, which exposes its open
+   state via aria-expanded (NOT data-state), so the accent must key off
+   [aria-expanded="true"] to fire at all. While the file tree is open the
+   button stays accent-tinted with a soft accent wash, matching the shell
+   drawer toggle. Because background is in the transition above, the wash
+   fades in lockstep with the color on open/close (no snap). */
+.ed-icon-btn:not(.ed-chat-toggle)[aria-expanded="true"] {
+  color: var(--accent);
+  background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent));
+}
 /* The real app icon as the brand mark inside the drawer toggle. */
 .ed-brand-icon {
   width: 36px; height: 36px; border-radius: 8px; object-fit: cover;
