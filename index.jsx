@@ -2247,7 +2247,7 @@ const CSS = `
 .ed-btn:active { transform: scale(0.97); }
 .ed-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ed-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
-.ed-btn-primary { background: var(--accent); border-color: var(--accent); color: #062016; }
+.ed-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 @media (hover: hover) { .ed-btn-primary:hover { filter: brightness(1.06); } }
 .ed-btn-icon { width: 44px; padding: 0; border-radius: 8px; font-size: 18px; }
 /* /mobius-ui:Button */
@@ -2257,7 +2257,7 @@ const CSS = `
 /* Destructive confirm action (delete file). App-specific, so it lives below the
    shared Button fence. */
 .ed-btn-danger {
-  background: var(--danger); border-color: var(--danger); color: #1a0606;
+  background: var(--danger); border-color: var(--danger); color: var(--accent-fg);
 }
 @media (hover: hover) { .ed-btn-danger:hover { filter: brightness(1.06); } }
 /* The logo-toggle is BARE like the shell's .shell__brand: no border, no
