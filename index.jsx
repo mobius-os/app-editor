@@ -2282,9 +2282,9 @@ const CSS = `
    scales for an instant touch acknowledgement (tap-highlight is suppressed);
    focus-visible gets the shell's accent ring. */
 @media (hover: hover) {
-  .ed-icon-btn:not(.ed-chat-toggle):hover { background: var(--surface); }
+  .ed-icon-btn:not(.ed-chat-toggle):hover { color: var(--text); background: var(--surface); }
 }
-.ed-icon-btn:not(.ed-chat-toggle):active { transform: scale(0.92); }
+.ed-icon-btn:not(.ed-chat-toggle):active { color: var(--text); background: var(--surface); transform: scale(0.92); }
 .ed-icon-btn:not(.ed-chat-toggle):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
