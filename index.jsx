@@ -2385,7 +2385,11 @@ const CSS = `
 .ed-scroll::-webkit-scrollbar-track { background: transparent; }
 /* /mobius-ui:Scrollskin */
 
-.ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0 24px; overscroll-behavior: contain; }
+/* Side gutter (8px) so the rows float as rounded pills inset from the
+   panel edge — mirrors the shell drawer body's horizontal padding. The
+   rows themselves carry the border-radius; this gutter is what lets the
+   rounded corners read against the panel rather than bleeding to the edge. */
+.ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 8px 24px; overscroll-behavior: contain; }
 
 /* Directory rows pair the expand button with a focus button. The focus button
    keeps a faint resting opacity on pointer devices (discoverable, not hover-only)
@@ -2396,7 +2400,7 @@ const CSS = `
 .ed-row-focus {
   flex: 0 0 auto; width: 40px; min-height: 44px; padding: 0;
   display: flex; align-items: center; justify-content: center;
-  background: transparent; border: 0; color: var(--muted);
+  background: transparent; border: 0; border-radius: 8px; color: var(--muted);
   font-size: 15px; line-height: 1; cursor: pointer;
   opacity: 0.35; transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
@@ -2418,7 +2422,7 @@ const CSS = `
 .ed-row-delete {
   flex: 0 0 auto; width: 40px; min-height: 44px; padding: 0;
   display: flex; align-items: center; justify-content: center;
-  background: transparent; border: 0; color: var(--muted);
+  background: transparent; border: 0; border-radius: 8px; color: var(--muted);
   font-size: 13px; line-height: 1; cursor: pointer;
   /* Resting opacity 0.6 keeps the muted glyph readable (>=3:1 against --surface)
      while still reading as secondary to the row text; full on hover/focus-within. */
@@ -2435,17 +2439,22 @@ const CSS = `
 
 .ed-row {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
-  padding: 6px 12px 6px 0; text-align: left;
-  background: transparent; border: 0; color: var(--text);
+  padding: 6px 12px; text-align: left;
+  background: transparent; border: 0; border-radius: 10px; color: var(--text);
   font-family: var(--font); font-size: 14px; cursor: pointer;
-  transition: background 0.12s ease;
+  transition: color 0.12s ease, background 0.12s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-@media (hover: hover) { .ed-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); } }
-.ed-row:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* Neutral hover — matches the shell drawer's --surface row hover rather
+   than an accent tint, so hovering a file reads as "focusable row", not
+   "almost selected". The accent is reserved for the selected/active state. */
+@media (hover: hover) { .ed-row:hover { background: var(--surface); } }
+.ed-row:active { color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
 .ed-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.ed-row-file.is-selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.ed-row-file.is-selected .ed-row-name { font-weight: 650; color: var(--text); }
+/* Selected file — rounded accent-dim fill + accent text, the same
+   treatment the shell drawer gives its active row (no square full-bleed). */
+.ed-row-file.is-selected { color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ed-row-file.is-selected .ed-row-name { font-weight: 650; color: var(--accent); }
 .ed-row-caret { flex: 0 0 auto; width: 20px; font-size: 17px; line-height: 1; color: var(--text); text-align: center; }
 /* File-type glyph — a bare mono token, no box. The shell's icons are bare
    lucide SVGs with no bounding box; matching that, the glyph keeps its accent
