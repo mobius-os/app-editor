@@ -545,6 +545,65 @@ function ImagePreview({ path, reloadKey }) {
 }
 
 // ----------------------------------------------------------------------
+// Shared modal-focus contract for the app's dialogs. A dialog must keep
+// keyboard focus inside itself while open and hand it back to whatever the
+// user was on when it closes, or focus silently lands on the inert tree
+// behind the scrim. This hook owns that invariant so each modal only wires the
+// returned `dialogRef`/`onKeyDown` and names its initial focus target.
+//
+// On open it captures the opener (document.activeElement) once and moves focus
+// to `initialFocusRef` if given, else the dialog's first focusable element. On
+// every keydown it traps Tab to the dialog's focusable set — recomputed
+// per-keydown because labels and disabled state shift with `busy`, so a cached
+// list would trap against stale nodes. On cleanup it restores the opener.
+// Escape is left to each modal so destructive dialogs can guard it.
+// ----------------------------------------------------------------------
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+function useModalFocus(initialFocusRef) {
+  const dialogRef = useRef(null)
+  // A ref (not state) so the opener survives every render without being a
+  // dependency that could retrigger the capture effect.
+  const openerRef = useRef(null)
+
+  useEffect(() => {
+    openerRef.current = document.activeElement
+    const target = initialFocusRef?.current
+      || dialogRef.current?.querySelector(FOCUSABLE_SELECTOR)
+    target?.focus()
+    return () => {
+      const opener = openerRef.current
+      if (opener && typeof opener.focus === 'function' && document.contains(opener)) {
+        opener.focus()
+      }
+    }
+  }, [])
+
+  const onKeyDown = useCallback((e) => {
+    if (e.key !== 'Tab') return
+    const focusable = dialogRef.current?.querySelectorAll(FOCUSABLE_SELECTOR)
+    if (!focusable || focusable.length === 0) {
+      // Everything is disabled (mid-write) — keep focus pinned in-dialog.
+      e.preventDefault()
+      return
+    }
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    const active = document.activeElement
+    if (e.shiftKey && active === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }, [])
+
+  return { dialogRef, onKeyDown }
+}
+
+// ----------------------------------------------------------------------
 // Name-entry modal for "+ File" / "+ Folder". Möbius mini-apps run in an
 // iframe WITHOUT the `allow-modals` sandbox token, so window.prompt silently
 // no-ops; we render our own absolutely-positioned overlay. It's a focused
@@ -557,8 +616,10 @@ function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) {
   const [name, setName] = useState('')
   const inputRef = useRef(null)
   const isFolder = kind === 'folder'
+  // Focus the name field on open; capture/restore the opener and trap Tab
+  // within the dialog. Escape closes (a name-entry modal is non-destructive).
+  const { dialogRef, onKeyDown } = useModalFocus(inputRef)
   useEffect(() => {
-    inputRef.current?.focus()
     const onKey = (e) => { if (e.key === 'Escape') onCancel() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -574,7 +635,7 @@ function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) {
   const where = targetDir ? `/data/${targetDir}` : '/data'
   return (
     <div className="ed-modal-scrim" onClick={onCancel}>
-      <div className="ed-modal" role="dialog" aria-modal="true" aria-label={isFolder ? 'New folder' : 'New file'} onClick={(e) => e.stopPropagation()}>
+      <div className="ed-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={isFolder ? 'New folder' : 'New file'} onKeyDown={onKeyDown} onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit}>
           <div className="ed-modal-title">{isFolder ? 'New folder' : 'New file'}</div>
           <div className="ed-modal-where" title={where}>in {where}</div>
@@ -611,19 +672,26 @@ function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) {
 // down (so a failed delete keeps the dialog open with the reason).
 // ----------------------------------------------------------------------
 function ConfirmModal({ title, body, confirmLabel, busyLabel, error, busy, onConfirm, onCancel }) {
+  const cancelRef = useRef(null)
+  // Land focus on Cancel — the safe default for a destructive confirm, so a
+  // keyboard/AT user starts on "back out", not "delete". The hook captures and
+  // restores the opener and traps Tab within the dialog.
+  const { dialogRef, onKeyDown } = useModalFocus(cancelRef)
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onCancel() }
+    // Escape closes only while idle; once a delete is in flight, Escape must
+    // not race the request out from under it.
+    const onKey = (e) => { if (e.key === 'Escape' && !busy) onCancel() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel])
+  }, [onCancel, busy])
   return (
-    <div className="ed-modal-scrim" onClick={onCancel}>
-      <div className="ed-modal" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+    <div className="ed-modal-scrim" onClick={busy ? null : onCancel}>
+      <div className="ed-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} onKeyDown={onKeyDown} onClick={(e) => e.stopPropagation()}>
         <div className="ed-modal-title">{title}</div>
         {body && <div className="ed-modal-body">{body}</div>}
         {error && <div className="ed-modal-error">{error}</div>}
         <div className="ed-modal-actions">
-          <button type="button" className="ed-btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button type="button" className="ed-btn" ref={cancelRef} onClick={onCancel} disabled={busy}>Cancel</button>
           <button type="button" className="ed-btn ed-btn-danger" onClick={onConfirm} disabled={busy}>
             {busy ? (busyLabel || 'Working…') : (confirmLabel || 'Confirm')}
           </button>
@@ -2539,7 +2607,7 @@ const CSS = `
 /* Editor pane — flex region above the chat. */
 .ed-editor-wrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .ed-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ed-pane-scroll { overflow: auto; padding: 14px 16px; }
+.ed-pane-scroll { overflow: auto; padding: 14px 16px; overscroll-behavior: contain; }
 .ed-cm-host { flex: 1; min-height: 0; overflow: hidden; }
 /* On a touch device the editor content jumps to >=16px so focusing a non-markdown
    file (the common .py/.json/.jsx case) doesn't trigger iOS Safari zoom-on-focus.
