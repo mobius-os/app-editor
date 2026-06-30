@@ -2369,7 +2369,7 @@ const CSS = `
 }
 /* The real app icon as the brand mark inside the drawer toggle. */
 .ed-brand-icon {
-  width: 36px; height: 36px; border-radius: 8px; object-fit: cover;
+  width: 34px; height: 34px; border-radius: 8px; object-fit: cover;
   flex-shrink: 0; display: block;
 }
 /* Accent-dot fallback shown when the install has no custom icon (route 404s). */
