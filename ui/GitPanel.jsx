@@ -41,14 +41,20 @@ export function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, 
   // the EXACT count (not the server's 200-cap flag) so files 9..N are never
   // silently dropped from the open list.
   const list = (items, status, total) => {
-    const shown = items.slice(0, GIT_LIST_PREVIEW)
+    const shown = (items || []).slice(0, GIT_LIST_PREVIEW)
     const extra = total - shown.length
     return (
       <>
         {shown.map((it) => {
-          const idx = it.path.lastIndexOf('/')
-          const base = idx >= 0 ? it.path.slice(idx + 1) : it.path
-          const dir = idx >= 0 ? it.path.slice(0, idx) : ''
+          // A wholly-untracked directory arrives from porcelain as `subdir/`.
+          // Strip the trailing slash before splitting so it renders a real name
+          // (and is flagged as a folder), not a blank card that opens a dir path.
+          const rawPath = it.path || ''
+          const isDir = rawPath.endsWith('/')
+          const path = isDir ? rawPath.replace(/\/+$/, '') : rawPath
+          const idx = path.lastIndexOf('/')
+          const base = (idx >= 0 ? path.slice(idx + 1) : path) + (isDir ? '/' : '')
+          const dir = idx >= 0 ? path.slice(0, idx) : ''
           const chip = chipFor(status, it.status)
           return (
             <button
