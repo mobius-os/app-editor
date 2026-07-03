@@ -20,6 +20,12 @@ export const CSS = `
   overflow: hidden;
   background: var(--bg); color: var(--text); font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  /* Semantic git-signal colors (operator-grade scannability, Hermex-inspired):
+     structure stays monochrome/accent; hue is reserved for git meaning only.
+     --green and --danger come from the theme; amber/blue are git-specific and
+     the theme can't express them, so they're the one allowed hardcode here. */
+  --ed-amber: #d99a2b;
+  --ed-blue: #4a90d9;
 }
 /* /mobius-ui:Root */
 
@@ -322,28 +328,40 @@ export const CSS = `
 .ed-git-counts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .ed-git-count { font-weight: 700; font-size: 11.5px; }
 .ed-git-count.is-staged { color: var(--green); }
-.ed-git-count.is-modified { color: var(--accent); }
-.ed-git-count.is-untracked { color: var(--muted); }
+.ed-git-count.is-modified { color: var(--ed-amber); }
+.ed-git-count.is-untracked { color: var(--ed-blue); }
 .ed-git-count.is-clean { color: var(--muted); font-weight: 600; }
 .ed-git-body { padding: 4px 12px 12px; max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; }
 .ed-git-group { margin-top: 8px; }
 .ed-git-group-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 4px; }
+/* Changed-file row = the Hermex "GitFileCard": bold basename over a dimmed
+   monospaced parent dir, with a semantic status chip on the trailing edge.
+   You read the file identity first, its location second. */
 .ed-git-file {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
-  padding: 5px 6px; text-align: left; border-radius: 8px;
-  background: transparent; border: 0; color: var(--text); cursor: pointer;
-  font-family: var(--mono); font-size: 12px;
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
+  margin-bottom: 6px; padding: 8px 10px; text-align: left; border-radius: 10px;
+  background: var(--surface2, var(--surface)); border: 1px solid var(--border); color: var(--text); cursor: pointer;
+  font-family: var(--font);
+  transition: border-color 0.12s ease, background 0.12s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-@media (hover: hover) { .ed-git-file:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); } }
-.ed-git-file:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.ed-git-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; }
-.ed-git-dot.is-staged { background: var(--green); }
-.ed-git-dot.is-modified { background: var(--accent); }
-.ed-git-dot.is-untracked { background: var(--muted); }
-.ed-git-file-path { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ed-git-file-status { flex: 0 0 auto; color: var(--muted); }
-.ed-git-more { margin-top: 6px; font-size: 11px; color: var(--muted); font-style: italic; }
+@media (hover: hover) { .ed-git-file:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); } }
+.ed-git-file:active { background: color-mix(in srgb, var(--accent) 10%, var(--surface2, var(--surface))); }
+.ed-git-file-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ed-git-file-name { font-size: 12.5px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-git-file-dir { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Semantic status chip — tinted fill at 16% + solid tint text (Hermex recipe). */
+.ed-chip {
+  flex: 0 0 auto; padding: 2px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap;
+  background: color-mix(in srgb, var(--chip) 16%, transparent); color: var(--chip);
+}
+.ed-chip.tone-staged { --chip: var(--green); }
+.ed-chip.tone-modified { --chip: var(--ed-amber); }
+.ed-chip.tone-untracked { --chip: var(--ed-blue); }
+.ed-chip.tone-deleted { --chip: var(--danger); }
+.ed-chip.tone-renamed { --chip: var(--ed-blue); }
+.ed-git-more { margin: 2px 0 4px; font-size: 11px; color: var(--muted); font-style: italic; }
 
 .ed-save-error {
   flex: 0 0 auto; margin: 8px 10px 0; padding: 8px 12px; border-radius: 10px;

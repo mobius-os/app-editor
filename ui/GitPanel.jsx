@@ -8,6 +8,19 @@ import { GIT_LIST_PREVIEW } from '../constants.js'
 // the first handful).
 // ----------------------------------------------------------------------
 
+// Map a group + raw git status code to a semantic chip (tone drives the color,
+// Hermex's fixed kind->color map: added/staged=green, modified=amber,
+// untracked=blue, deleted=red, renamed=blue). Tone falls back to the group.
+function chipFor(group, code) {
+  const k = String(code || '').toUpperCase()
+  if (group === 'untracked') return { tone: 'untracked', label: 'New' }
+  if (k.includes('D')) return { tone: 'deleted', label: 'Deleted' }
+  if (k.includes('R')) return { tone: 'renamed', label: 'Renamed' }
+  if (k.includes('A')) return { tone: 'staged', label: 'Added' }
+  if (k.includes('M')) return { tone: group === 'staged' ? 'staged' : 'modified', label: 'Modified' }
+  return { tone: group, label: group.charAt(0).toUpperCase() + group.slice(1) }
+}
+
 export function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, onOpenFile }) {
   if (gitLoading && !git) {
     return <div className="ed-git-bar is-quiet">Checking git…</div>
@@ -32,19 +45,27 @@ export function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, 
     const extra = total - shown.length
     return (
       <>
-        {shown.map((it) => (
-          <button
-            key={`${status}-${it.path}`}
-            type="button"
-            className="ed-git-file"
-            onClick={() => onOpenFile(resolve(it.path))}
-            title={it.path}
-          >
-            <span className={`ed-git-dot is-${status}`} aria-hidden="true" />
-            <span className="ed-git-file-path">{it.path}</span>
-            {it.status && <span className="ed-git-file-status">{it.status}</span>}
-          </button>
-        ))}
+        {shown.map((it) => {
+          const idx = it.path.lastIndexOf('/')
+          const base = idx >= 0 ? it.path.slice(idx + 1) : it.path
+          const dir = idx >= 0 ? it.path.slice(0, idx) : ''
+          const chip = chipFor(status, it.status)
+          return (
+            <button
+              key={`${status}-${it.path}`}
+              type="button"
+              className="ed-git-file"
+              onClick={() => onOpenFile(resolve(it.path))}
+              title={it.path}
+            >
+              <span className="ed-git-file-id">
+                <span className="ed-git-file-name">{base}</span>
+                {dir && <span className="ed-git-file-dir">{dir}</span>}
+              </span>
+              <span className={`ed-chip tone-${chip.tone}`}>{chip.label}</span>
+            </button>
+          )
+        })}
         {extra > 0 && <div className="ed-git-more">+{extra} more</div>}
       </>
     )

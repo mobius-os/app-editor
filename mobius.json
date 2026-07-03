@@ -1,8 +1,8 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.4.6",
-  "description": "Browse and edit any file on your Möbius, with an agent that can edit for you.",
+  "version": "0.4.7",
+  "description": "Browse and edit any file on your M\u00f6bius, with an agent that can edit for you.",
   "author": "mobius-os",
   "license": "MIT",
   "homepage": "https://github.com/mobius-os/app-editor",
