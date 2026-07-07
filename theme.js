@@ -28,6 +28,15 @@ export const CSS = `
   --ed-blue: #4a90d9;
 }
 /* /mobius-ui:Root */
+/* On a light OS theme the vivid amber/blue above are too light to clear text
+   contrast as small (10-12px) chip/count labels on a pale surface, so darken
+   them there. prefers-color-scheme is the only theme signal available to the
+   app (the shell doesn't expose a light/dark token), and it tracks the common
+   case where a light OS theme pairs with a light Möbius theme. The dark
+   defaults stay vivid where they read well. */
+@media (prefers-color-scheme: light) {
+  .ed-root { --ed-amber: #8a5a08; --ed-blue: #245ba0; }
+}
 
 /* mobius-ui:Header v1 — keep in sync; library candidate. Diverge below the marker only. */
 .ed-header {
@@ -166,12 +175,21 @@ export const CSS = `
 .ed-drawer-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .ed-drawer-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
 .ed-new-btn {
+  position: relative;
   display: inline-flex; align-items: center; min-height: 30px; padding: 4px 10px;
   border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface2, var(--surface)); color: var(--text);
   font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
   transition: background 0.14s ease, border-color 0.14s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+/* The pill stays visually compact (30px) but its tap target is a full 44px:
+   a transparent overlay extends the hit box vertically without changing layout.
+   The two + buttons sit side by side with a gap, so the vertical-only extension
+   never overlaps its neighbor. */
+.ed-new-btn::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%); height: 44px;
 }
 @media (hover: hover) { .ed-new-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: var(--accent); } }
 .ed-new-btn:active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); border-color: var(--accent); }
@@ -186,11 +204,18 @@ export const CSS = `
   -webkit-user-select: none; user-select: none;
 }
 .ed-focus-clear {
+  position: relative;
   flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 30px;
   padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--accent);
   font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+/* Compact "← All files" pill with a full 44px tap target (transparent vertical
+   overlay), same pattern as .ed-new-btn. */
+.ed-focus-clear::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%); height: 44px;
 }
 @media (hover: hover) { .ed-focus-clear:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); } }
 .ed-focus-clear:active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
@@ -315,7 +340,7 @@ export const CSS = `
 /* Git panel — compact, collapsible. */
 .ed-git { flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--surface); }
 .ed-git-bar {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px;
   padding: 8px 12px; text-align: left;
   background: transparent; border: 0; color: var(--text); cursor: pointer;
   font-family: var(--font); font-size: 12.5px;
@@ -496,7 +521,7 @@ export const CSS = `
 }
 .ed-modal {
   width: 100%; max-width: 360px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
   padding: 18px 18px 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
 }
 .ed-modal-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
@@ -511,7 +536,7 @@ export const CSS = `
 }
 .ed-modal-input {
   width: 100%; margin-top: 12px; min-height: 44px; padding: 10px 12px;
-  border-radius: 10px; border: 1px solid var(--border);
+  border-radius: 8px; border: 1px solid var(--border);
   background: var(--bg); color: var(--text);
   /* 16px stops iOS Safari zoom-on-focus — don't go lower on a focusable field. */
   font-family: var(--mono); font-size: 16px;

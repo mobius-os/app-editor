@@ -31,13 +31,40 @@ In the App Store, choose **Install from URL** and paste:
 https://raw.githubusercontent.com/mobius-os/app-editor/main/mobius.json
 ```
 
-## Dev / smoke compile
+## Project layout
 
-Run this from the repo root (no container needed) to verify the JSX compiles cleanly:
+The app is a multi-file module tree (declared in `mobius.json`'s `source_files`;
+the installer fetches each path and esbuild bundles from `index.jsx`):
+
+| File | Role |
+|------|------|
+| `index.jsx` | App shell + composition: filesystem/editor/git/chat state, persistence wiring, drawer nav. |
+| `constants.js` | Scalar constants (FS root, extension sets, chat-split sizing). |
+| `paths.js` | Pure, dependency-free path/name/format helpers + the save-state and git-entry parsers. Unit-tested. |
+| `domain.js` | The CodeMirror + markdown live-preview + KaTeX editor engine, and the embedded-agent system prompt. |
+| `storage.js` | `/api/fs/*` owner-filesystem helpers, the online signal, UI-pref + chat-height persistence, and the analytics `emitSignal`. |
+| `theme.js` | The single scoped stylesheet (`export const CSS`). |
+| `ui/*.jsx` | One React component per file (tree node, editor, git panel, modals, chat embed). |
+
+## Data
+
+- **`ui-prefs.json`** (via `window.mobius.storage`) — last-opened path + expanded directory set, restored on reopen.
+- **`chat_id.json`** (via `window.mobius.chat`'s `persist`) — the embedded agent chat id, so the transcript is the same one every visit.
+- **`signals.jsonl`** (via `window.mobius.signal`) — fire-and-forget analytics for Reflection (`app_ready`, `item_opened/created/updated/deleted`, `chat_opened`, `overwrite_conflict`, `error`, …). Flat primitives only; no paths or file names.
+- **`editor:<appId>:chat-height:v1`** (`localStorage`) — the chat/editor split px height, kept out of storage so per-pixel drags don't round-trip.
+
+## Development
+
+Unit tests (pure helpers + the save-state and git-entry-path regressions) run on a fresh clone with zero install — Node's built-in test runner, no dependencies:
 
 ```bash
-ESBUILD=/home/hmzmrzx/projects/node_modules/.bin/esbuild
-$ESBUILD index.jsx \
+npm test
+```
+
+Compile smoke (verify the JSX bundles cleanly; needs `esbuild` on your `PATH`, or use `npx esbuild`):
+
+```bash
+esbuild index.jsx \
   --bundle --format=esm --jsx=automatic --platform=browser \
   --external:react --external:react/jsx-runtime --external:react-dom \
   --external:@codemirror/state --external:@codemirror/view \
@@ -47,7 +74,7 @@ $ESBUILD index.jsx \
   --outfile=/tmp/editor-smoke.js
 ```
 
-Expected: ~84.5 KB output, exit 0.
+Expected: a clean bundle (~106 KB), exit 0.
 
 ## License
 
