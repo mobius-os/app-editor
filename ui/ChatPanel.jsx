@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentSystemPrompt } from '../domain.js'
+import { emitSignal } from '../storage.js'
 
 // ----------------------------------------------------------------------
 // Embedded agent chat. The runtime mounts the real ChatView into an iframe, so
@@ -53,6 +54,7 @@ export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) 
       onError: ({ error: e }) => {
         const msg = typeof e === 'string' ? e : 'Embedded chat reported an error.'
         setError(msg)
+        emitSignal('error', { message: msg, source: 'chat' })
       },
     }).then((h) => {
       if (disposed) { h.destroy(); return }
@@ -61,6 +63,7 @@ export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) 
       if (disposed) return
       const msg = e.message || 'Could not mount embedded chat.'
       setError(msg)
+      emitSignal('error', { message: msg, source: 'chat' })
     })
     return () => { disposed = true; if (handle) handle.destroy() }
   }, [systemPrompt])

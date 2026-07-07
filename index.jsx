@@ -28,6 +28,7 @@ import {
   fsTree,
   fsWrite,
   loadPrefs,
+  emitSignal,
   readChatHeight,
   savePrefs,
   chatHeightKey,
@@ -302,9 +303,11 @@ export default function App({ appId }) {
       setRedactedByDir((prev) => ({ ...prev, '': redacted }))
       if (!appReadyRef.current) {
         appReadyRef.current = true
+        emitSignal('app_ready', { item_count: entries.length })
       }
     } catch (e) {
       if (dirGenRef.current.get('') !== gen) return
+      emitSignal('error', { message: e && e.message ? e.message : 'tree-root failed', source: 'tree-root' })
       setRootError(e.message || 'Could not load the file tree.')
     } finally {
       if (dirGenRef.current.get('') === gen) setRootLoading(false)
@@ -360,6 +363,7 @@ export default function App({ appId }) {
       setGit(g); setGitError(null)
     } catch (e) {
       if (selectedRef.current !== forPath) return
+      emitSignal('error', { message: e && e.message ? e.message : 'git failed', source: 'git' })
       setGit(null); setGitError(e)
     } finally {
       if (selectedRef.current === forPath) setGitLoading(false)
@@ -380,6 +384,7 @@ export default function App({ appId }) {
       // A real user open (not an agent-turn re-read) — record which file types
       // the owner actually inspects, no path/name PII.
       if (!external) {
+        emitSignal('item_opened', { type: 'file', ext: extOf(baseName(path)), bytes: m.size || 0, binary: !!m.is_binary })
       }
       if (m.is_binary) {
         // Binary: image preview component or a "binary file" notice render from
@@ -404,6 +409,8 @@ export default function App({ appId }) {
       setFileError(null)
     } catch (e) {
       if (selectedRef.current !== path) return
+      emitSignal('error', { message: e && e.message ? e.message : 'load failed', source: 'load' })
+      if (e && typeof e.status === 'number') emitSignal('file_open_error', { status: e.status })
       if (preserveBuffer) {
         // The user still has a valid buffer open — don't replace it with an
         // error pane (that would visually destroy their unsaved work). Surface
@@ -584,6 +591,7 @@ export default function App({ appId }) {
       setRedactedByDir((prev) => ({ ...prev, [dirPath]: redacted }))
       return entries
     } catch (e) {
+      emitSignal('error', { message: e && e.message ? e.message : 'tree-dir failed', source: 'tree-dir' })
       setErrorDirs((prev) => ({ ...prev, [dirPath]: e.message || 'Could not list this folder.' }))
       return null
     } finally {
@@ -681,6 +689,7 @@ export default function App({ appId }) {
       // Make sure the target dir is expanded + re-fetched so the new row shows.
       if (targetDir) setExpanded((prev) => { const n = new Set(prev); n.add(targetDir); return n })
       await loadDir(targetDir)
+      emitSignal('item_created', { type: kind })
       closeCreate()
       // Open the new file THROUGH the dirty-switch guard — a direct selectFile
       // here would silently discard an unsaved buffer without the discard modal.
@@ -689,6 +698,7 @@ export default function App({ appId }) {
       if (kind === 'file') attemptSelectFile(joinPath(targetDir, name), { closeNavAfter: false })
     } catch (e) {
       setCreating(false)
+      emitSignal('error', { message: e && e.message ? e.message : 'create failed', source: 'create' })
       setCreateError(e.message || 'Could not create.')
     }
   }, [createModal, childrenByDir, loadDir, attemptSelectFile, closeCreate])
@@ -716,6 +726,7 @@ export default function App({ appId }) {
     setDeleteError(null)
     try {
       await fsDelete(path)
+      emitSignal('item_deleted', { type: 'file' })
       // Refresh the parent dir so the deleted row disappears. After a delete,
       // re-list even a directory we haven't expanded as cached so the change is
       // reflected wherever the row lived (root '' included).
@@ -729,11 +740,13 @@ export default function App({ appId }) {
       // error — same full cleanup as the normal path so no stale dirty/baseline
       // or banner survives.
       if (e.status === 404) {
+        emitSignal('item_deleted', { type: 'file' })
         loadDir(dirName(path))
         if (selectedRef.current === path) clearOpenFile()
         closeDelete()
         return
       }
+      emitSignal('error', { message: e && e.message ? e.message : 'delete failed', source: 'delete' })
       setDeleteError(e.message || 'Could not delete this file.')
     }
   }, [deleteTarget, loadDir, closeDelete, clearOpenFile])
@@ -806,8 +819,10 @@ export default function App({ appId }) {
         // The save may have changed git status (new modified/untracked) — refresh.
         loadGit(savedPath)
       }
+      emitSignal('item_updated', { type: 'file', ext: extOf(baseName(savedPath)), bytes: savedText.length })
     } catch (e) {
       if (selectedRef.current === savedPath) setSaveError(e.message || 'Could not save.')
+      emitSignal('error', { message: e && e.message ? e.message : 'save failed', source: 'save' })
     } finally {
       setSaving(false)
     }
@@ -826,6 +841,7 @@ export default function App({ appId }) {
       const diskText = await fsReadText(selectedPath)
       if (selectedRef.current !== selectedPath) return  // selection moved on
       if (diskText !== baselineRef.current) {
+        emitSignal('overwrite_conflict', { resolution: 'prompt' })
         setPendingOverwrite(true)
         return
       }
@@ -837,11 +853,13 @@ export default function App({ appId }) {
   }, [selectedPath, meta, writeNow])
 
   const confirmOverwrite = useCallback(() => {
+    emitSignal('overwrite_conflict', { resolution: 'overwrite' })
     setPendingOverwrite(false)
     writeNow()
   }, [writeNow])
 
   const cancelOverwrite = useCallback(() => {
+    emitSignal('overwrite_conflict', { resolution: 'cancel' })
     setPendingOverwrite(false)
     // Re-read the file so the user can see what's on disk now and reconcile;
     // their unsaved buffer is preserved by the dirty-guard in loadFile.
@@ -932,6 +950,7 @@ export default function App({ appId }) {
         setChatHeight(Math.min(maxPx, Math.max(CHAT_MIN_PX, Math.round(total * CHAT_SPAWN_RATIO))))
       }
     }
+    if (opening) emitSignal('chat_opened', {})
     setChatOpen(!chatOpen)
   }, [chatOpen, maxChatPx])
 

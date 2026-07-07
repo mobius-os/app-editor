@@ -13,6 +13,14 @@ export function ownerToken() {
   }
 }
 
+// Fire-and-forget analytics for Reflection. window.mobius.signal buffers in
+// memory and flushes to the app's signals.jsonl; it never throws, but it may be
+// absent in an old shell, so guard the call. Payloads stay flat primitives, no
+// PII (paths/file names never go through here).
+export function emitSignal(name, payload) {
+  try { window.mobius?.signal?.(name, payload) } catch { /* analytics never breaks the app */ }
+}
+
 // A thrown FsError carries the HTTP status so callers can branch (403 → "ask
 // the agent", 404 → "deleted", 413 → "too big") instead of string-matching.
 export class FsError extends Error {
