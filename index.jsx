@@ -198,6 +198,9 @@ export default function App({ appId }) {
   // Chat starts collapsed — the editor is the primary surface; the user opens
   // the agent when they need it, not the other way around.
   const [chatOpen, setChatOpen] = useState(false)
+  const [chatMounted, setChatMounted] = useState(false)
+  const chatOpenRef = useRef(false)
+  const chatHandleRef = useRef(null)
   const mainRef = useRef(null)
 
   const quickActions = useMemo(() => [
@@ -216,28 +219,41 @@ export default function App({ appId }) {
 
   // --- Folder focus: when set, the tree renders only this dir's subtree. ---
   const [focusRoot, setFocusRoot] = useState('')
+  const focusRootRef = useRef('')
+  const focusHandleRef = useRef(null)
 
   // --- Create file/folder: the open name-entry modal, if any. ---
   // { kind: 'file'|'folder', targetDir } while open; null when closed.
   const [createModal, setCreateModal] = useState(null)
   const [createError, setCreateError] = useState(null)
   const [creating, setCreating] = useState(false)
+  const createHandleRef = useRef(null)
+  const creatingRef = useRef(false)
 
   // --- Delete file: the file entry pending a confirm, if any. ---
   // Holds the FileNode `entry` while the confirm dialog is open; null when closed.
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteError, setDeleteError] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const deleteHandleRef = useRef(null)
+  const deletingRef = useRef(false)
 
   // --- Switch-away guard: a file path the user tapped while the current buffer
   // has unsaved edits, held until they confirm discarding. null = no pending
   // switch. The iframe blocks window.confirm, so this drives an in-app modal. ---
   const [pendingSwitch, setPendingSwitch] = useState(null)
+  const switchHandleRef = useRef(null)
 
   // --- Overwrite guard: set when a save found the file changed on disk since
   // we loaded it (an agent edited it), so we ask before clobbering rather than
   // silently overwriting. null = no pending overwrite. ---
   const [pendingOverwrite, setPendingOverwrite] = useState(false)
+  const overwriteHandleRef = useRef(null)
+
+  useEffect(() => { chatOpenRef.current = chatOpen }, [chatOpen])
+  useEffect(() => { focusRootRef.current = focusRoot }, [focusRoot])
+  useEffect(() => { creatingRef.current = creating }, [creating])
+  useEffect(() => { deletingRef.current = deleting }, [deleting])
 
   // Fetch one directory level (uncached). Returns the entries or throws.
   const fetchDir = useCallback(async (dirPath) => {
@@ -478,31 +494,62 @@ export default function App({ appId }) {
 
   const toggleNav = useCallback(() => { if (navOpen) closeNav(); else openNav() }, [navOpen, closeNav, openNav])
 
+  const closeBackHandle = useCallback((ref) => {
+    try { ref.current?.close?.() } catch {}
+    ref.current = null
+  }, [])
+
+  const openBackSurface = useCallback(async (label, ref, onBack) => {
+    closeBackHandle(ref)
+    if (window.mobius?.nav?.open) {
+      const handle = window.mobius.nav.open(label, () => {
+        if (ref.current === handle) ref.current = null
+        onBack()
+      })
+      ref.current = handle
+      await handle.ready?.catch(() => false)
+      if (ref.current !== handle) return false
+    }
+    return true
+  }, [closeBackHandle])
+
   // Guard against silently discarding unsaved edits when the user opens a
   // DIFFERENT file. If the current buffer is dirty, hold the target (plus the
   // nav-close the tap wanted) and show a confirm modal (the iframe blocks
   // window.confirm); otherwise switch straight away. Re-selecting the same file
   // is a no-op switch, so it never prompts. We defer the nav-close to the
   // confirm so a cancel leaves the user where they were browsing.
+  const openSwitchPrompt = useCallback(async (target) => {
+    const ready = await openBackSurface('editor-discard-changes', switchHandleRef, () => {
+      setPendingSwitch(null)
+    })
+    if (!ready) return
+    setPendingSwitch(target)
+  }, [openBackSurface])
+
   const attemptSelectFile = useCallback((path, { closeNavAfter = false } = {}) => {
     if (path && path !== selectedRef.current && dirtyRef.current) {
-      setPendingSwitch({ path, closeNavAfter })
+      openSwitchPrompt({ path, closeNavAfter })
       return
     }
     selectFile(path)
     if (closeNavAfter) closeNav()
-  }, [selectFile, closeNav])
+  }, [selectFile, closeNav, openSwitchPrompt])
 
   const confirmSwitch = useCallback(() => {
     const target = pendingSwitch
+    closeBackHandle(switchHandleRef)
     setPendingSwitch(null)
     if (target && target.path) {
       selectFile(target.path)
       if (target.closeNavAfter) closeNav()
     }
-  }, [pendingSwitch, selectFile, closeNav])
+  }, [pendingSwitch, selectFile, closeNav, closeBackHandle])
 
-  const cancelSwitch = useCallback(() => setPendingSwitch(null), [])
+  const cancelSwitch = useCallback(() => {
+    closeBackHandle(switchHandleRef)
+    setPendingSwitch(null)
+  }, [closeBackHandle])
 
   // On desktop (≥760px) the drawer is already pinned-open by state initialization.
   // On mobile it starts closed — nothing to register on mount.
@@ -606,15 +653,23 @@ export default function App({ appId }) {
   // expanded) so the narrowed tree isn't blank.
   // Focus stays in the drawer (the owner is narrowing what they browse), so we
   // do NOT close the nav here — closing would hide the tree they just focused.
-  const focusDir = useCallback((dirPath) => {
-    setFocusRoot((cur) => {
-      const next = cur === dirPath ? '' : dirPath
-      if (next && !childrenByDir[next]) loadDir(next)
-      return next
-    })
-  }, [childrenByDir, loadDir])
+  const clearFocus = useCallback(() => {
+    closeBackHandle(focusHandleRef)
+    setFocusRoot('')
+  }, [closeBackHandle])
 
-  const clearFocus = useCallback(() => setFocusRoot(''), [])
+  const focusDir = useCallback(async (dirPath) => {
+    if (focusRootRef.current === dirPath) {
+      clearFocus()
+      return
+    }
+    const ready = await openBackSurface('editor-folder-focus', focusHandleRef, () => {
+      setFocusRoot('')
+    })
+    if (!ready) return
+    if (!childrenByDir[dirPath]) loadDir(dirPath)
+    setFocusRoot(dirPath)
+  }, [childrenByDir, loadDir, openBackSurface, clearFocus])
 
   // Open a directory row tapped in the git panel. A wholly-untracked folder
   // arrives from git as a directory path — opening it as a FILE 404s and reads
@@ -639,16 +694,25 @@ export default function App({ appId }) {
     return ''
   }, [focusRoot, selectedPath])
 
-  const openCreate = useCallback((kind) => {
+  const openCreate = useCallback(async (kind) => {
+    const modal = { kind, targetDir: createTargetDir() }
+    const ready = await openBackSurface('editor-create', createHandleRef, () => {
+      if (creatingRef.current) return
+      setCreateModal(null)
+      setCreateError(null)
+      setCreating(false)
+    })
+    if (!ready) return
     setCreateError(null)
-    setCreateModal({ kind, targetDir: createTargetDir() })
-  }, [createTargetDir])
+    setCreateModal(modal)
+  }, [createTargetDir, openBackSurface])
 
   const closeCreate = useCallback(() => {
+    closeBackHandle(createHandleRef)
     setCreateModal(null)
     setCreateError(null)
     setCreating(false)
-  }, [])
+  }, [closeBackHandle])
 
   const submitCreate = useCallback(async (name) => {
     if (!createModal) return
@@ -708,16 +772,24 @@ export default function App({ appId }) {
   // window.confirm). On confirm we DELETE via the FS API, then refresh the
   // file's directory so the row disappears, and clear the open buffer if the
   // deleted file was the one being viewed.
-  const requestDelete = useCallback((entry) => {
+  const requestDelete = useCallback(async (entry) => {
+    const ready = await openBackSurface('editor-delete', deleteHandleRef, () => {
+      if (deletingRef.current) return
+      setDeleteTarget(null)
+      setDeleteError(null)
+      setDeleting(false)
+    })
+    if (!ready) return
     setDeleteError(null)
     setDeleteTarget(entry)
-  }, [])
+  }, [openBackSurface])
 
   const closeDelete = useCallback(() => {
+    closeBackHandle(deleteHandleRef)
     setDeleteTarget(null)
     setDeleteError(null)
     setDeleting(false)
-  }, [])
+  }, [closeBackHandle])
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return
@@ -842,6 +914,11 @@ export default function App({ appId }) {
       if (selectedRef.current !== selectedPath) return  // selection moved on
       if (diskText !== baselineRef.current) {
         emitSignal('overwrite_conflict', { resolution: 'prompt' })
+        const ready = await openBackSurface('editor-overwrite', overwriteHandleRef, () => {
+          if (savingRef.current) return
+          setPendingOverwrite(false)
+        })
+        if (!ready) return
         setPendingOverwrite(true)
         return
       }
@@ -850,21 +927,23 @@ export default function App({ appId }) {
     }
     if (selectedRef.current !== selectedPath) return
     await writeNow()
-  }, [selectedPath, meta, writeNow])
+  }, [selectedPath, meta, writeNow, openBackSurface])
 
   const confirmOverwrite = useCallback(() => {
     emitSignal('overwrite_conflict', { resolution: 'overwrite' })
+    closeBackHandle(overwriteHandleRef)
     setPendingOverwrite(false)
     writeNow()
-  }, [writeNow])
+  }, [writeNow, closeBackHandle])
 
   const cancelOverwrite = useCallback(() => {
     emitSignal('overwrite_conflict', { resolution: 'cancel' })
+    closeBackHandle(overwriteHandleRef)
     setPendingOverwrite(false)
     // Re-read the file so the user can see what's on disk now and reconcile;
     // their unsaved buffer is preserved by the dirty-guard in loadFile.
     if (selectedRef.current) loadFile(selectedRef.current, { external: true })
-  }, [loadFile])
+  }, [loadFile, closeBackHandle])
 
   // Cmd/Ctrl-S saves (when writable). A keyboard convenience; the Save button
   // is the primary affordance.
@@ -941,18 +1020,33 @@ export default function App({ appId }) {
   // Opening the chat for the first time (no height chosen yet) spawns it at
   // half the main column — the house 50/50 split. After that the user's own
   // height (dragged or restored) wins.
-  const toggleChat = useCallback(() => {
-    const opening = !chatOpen
-    if (opening && !chatHeightTouched.current) {
+  const closeChat = useCallback(() => {
+    closeBackHandle(chatHandleRef)
+    setChatOpen(false)
+  }, [closeBackHandle])
+
+  const openChat = useCallback(async () => {
+    if (chatOpenRef.current) return
+    const ready = await openBackSurface('editor-chat', chatHandleRef, () => {
+      setChatOpen(false)
+    })
+    if (!ready) return
+    setChatMounted(true)
+    if (!chatHeightTouched.current) {
       const total = mainRef.current ? mainRef.current.getBoundingClientRect().height : 0
       if (total) {
         const maxPx = maxChatPx(total)
         setChatHeight(Math.min(maxPx, Math.max(CHAT_MIN_PX, Math.round(total * CHAT_SPAWN_RATIO))))
       }
     }
-    if (opening) emitSignal('chat_opened', {})
-    setChatOpen(!chatOpen)
-  }, [chatOpen, maxChatPx])
+    emitSignal('chat_opened', {})
+    setChatOpen(true)
+  }, [maxChatPx, openBackSurface])
+
+  const toggleChat = useCallback(() => {
+    if (chatOpenRef.current) closeChat()
+    else openChat()
+  }, [closeChat, openChat])
 
   const beginChatResize = useCallback((event) => {
     event.preventDefault()
@@ -1004,7 +1098,20 @@ export default function App({ appId }) {
     }
   }, [nudgeChat, chatHeight, maxChatPx])
 
-  useEffect(() => () => { try { navHandleRef.current?.close?.() } catch {} navHandleRef.current = null }, [])
+  useEffect(() => () => {
+    for (const ref of [
+      navHandleRef,
+      chatHandleRef,
+      focusHandleRef,
+      createHandleRef,
+      deleteHandleRef,
+      switchHandleRef,
+      overwriteHandleRef,
+    ]) {
+      try { ref.current?.close?.() } catch {}
+      ref.current = null
+    }
+  }, [])
 
   const rootEntries = childrenByDir[''] || []
   const rootRedacted = redactedByDir[''] || []
@@ -1275,7 +1382,9 @@ export default function App({ appId }) {
               </div>
             )}
             <div className="ed-chat-slot" style={chatOpen ? undefined : { display: 'none' }}>
-              <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
+              {chatMounted && (
+                <ChatPanel chatHeight={chatHeight} onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
+              )}
             </div>
           </>
         </main>

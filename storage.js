@@ -131,14 +131,23 @@ export function fsGit(path) {
 
 // ----------------------------------------------------------------------
 // Online/offline. /api/fs/* needs the network — there is no offline mirror —
-// so we track navigator.onLine to show a clean "needs a connection" state
-// rather than letting calls fail into a dead UI.
+// so prefer the shell's probed reachability verdict when available. The browser
+// online/offline events remain as a standalone/old-runtime fallback.
 // ----------------------------------------------------------------------
+export function currentOnline() {
+  const mobiusOnline = typeof window !== 'undefined' ? window.mobius?.online : undefined
+  if (typeof mobiusOnline === 'boolean') return mobiusOnline
+  return typeof navigator === 'undefined' ? true : navigator.onLine !== false
+}
+
 export function useOnline() {
-  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false))
+  const [online, setOnline] = useState(() => currentOnline())
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
-    const sync = () => setOnline(navigator.onLine !== false)
+    if (typeof window.mobius?.onOnlineChange === 'function') {
+      return window.mobius.onOnlineChange((next) => setOnline(next !== false))
+    }
+    const sync = () => setOnline(currentOnline())
     window.addEventListener('online', sync)
     window.addEventListener('offline', sync)
     return () => { window.removeEventListener('online', sync); window.removeEventListener('offline', sync) }

@@ -44,7 +44,7 @@ export const CSS = `
   display: flex; align-items: center; gap: 10px;
   min-height: 48px;
   /* Top-pinned bar: pad against the notch on an installed PWA (iOS safe area). */
-  padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+  padding: max(8px, env(safe-area-inset-top), var(--mobius-safe-top, 0px)) 12px 8px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
 /* /mobius-ui:Header */
@@ -236,7 +236,11 @@ export const CSS = `
    panel edge — mirrors the shell drawer body's horizontal padding. The
    rows themselves carry the border-radius; this gutter is what lets the
    rounded corners read against the panel rather than bleeding to the edge. */
-.ed-tree { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 8px 24px; overscroll-behavior: contain; }
+.ed-tree {
+  flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 6px 8px max(24px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
+  overscroll-behavior: contain;
+}
 
 /* Directory rows pair the expand button with a focus button. The focus button
    keeps a faint resting opacity on pointer devices (discoverable, not hover-only)
@@ -444,6 +448,7 @@ export const CSS = `
   flex: 0 0 auto;
   display: flex; flex-direction: column;
   height: 280px; min-height: 64px;
+  padding-bottom: max(0px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
   border-top: 1px solid var(--border); background: var(--surface);
 }
 .ed-chat-embed {
@@ -516,7 +521,8 @@ export const CSS = `
    app (the iframe blocks window.prompt). Reuses the .ed-btn shapes for actions. */
 .ed-modal-scrim {
   position: absolute; inset: 0; z-index: 60;
-  display: flex; align-items: center; justify-content: center; padding: 20px;
+  display: flex; align-items: center; justify-content: center;
+  padding: max(20px, env(safe-area-inset-top), var(--mobius-safe-top, 0px)) 20px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
   background: rgba(0, 0, 0, 0.5);
 }
 .ed-modal {
