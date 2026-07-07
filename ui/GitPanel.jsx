@@ -1,4 +1,5 @@
 import { GIT_LIST_PREVIEW } from '../constants.js'
+import { parseGitEntryPath } from '../paths.js'
 
 // ----------------------------------------------------------------------
 // Git panel — a compact, collapsible summary for the open file's repo. Shows
@@ -21,7 +22,7 @@ function chipFor(group, code) {
   return { tone: group, label: group.charAt(0).toUpperCase() + group.slice(1) }
 }
 
-export function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, onOpenFile }) {
+export function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, onOpenFile, onOpenDir }) {
   if (gitLoading && !git) {
     return <div className="ed-git-bar is-quiet">Checking git…</div>
   }
@@ -47,21 +48,21 @@ export function GitPanel({ git, gitError, gitLoading, repoRoot, open, onToggle, 
       <>
         {shown.map((it) => {
           // A wholly-untracked directory arrives from porcelain as `subdir/`.
-          // Strip the trailing slash before splitting so it renders a real name
-          // (and is flagged as a folder), not a blank card that opens a dir path.
-          const rawPath = it.path || ''
-          const isDir = rawPath.endsWith('/')
-          const path = isDir ? rawPath.replace(/\/+$/, '') : rawPath
-          const idx = path.lastIndexOf('/')
-          const base = (idx >= 0 ? path.slice(idx + 1) : path) + (isDir ? '/' : '')
-          const dir = idx >= 0 ? path.slice(0, idx) : ''
+          // parseGitEntryPath strips the trailing slash so it renders a real
+          // name (flagged as a folder), and gives us `path` (slash-stripped, for
+          // opening/focusing) separate from `base` (kept with the slash, for
+          // display). A directory row focuses the tree instead of trying to
+          // OPEN a directory as a file — the latter 404s and reads as
+          // "This file no longer exists".
+          const { isDir, path, base, dir } = parseGitEntryPath(it.path)
           const chip = chipFor(status, it.status)
           return (
             <button
               key={`${status}-${it.path}`}
               type="button"
               className="ed-git-file"
-              onClick={() => onOpenFile(resolve(it.path))}
+              onClick={() => (isDir ? onOpenDir && onOpenDir(resolve(path)) : onOpenFile(resolve(it.path)))}
+              aria-label={isDir ? `Focus folder ${base}` : `Open ${base}`}
               title={it.path}
             >
               <span className="ed-git-file-id">

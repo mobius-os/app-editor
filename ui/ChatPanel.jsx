@@ -44,12 +44,24 @@ export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) 
         const fn = getContextRef.current
         return fn ? fn() : null
       },
-      onTurnDone: () => { if (onTurnDoneRef.current) onTurnDoneRef.current() },
-      onError: ({ error: e }) => { setError(typeof e === 'string' ? e : 'Embedded chat reported an error.') },
+      onTurnDone: () => {
+        // A turn completed — clear any stale error banner from a prior failure
+        // (it previously only cleared on mount, so it survived a full recovery).
+        setError(null)
+        if (onTurnDoneRef.current) onTurnDoneRef.current()
+      },
+      onError: ({ error: e }) => {
+        const msg = typeof e === 'string' ? e : 'Embedded chat reported an error.'
+        setError(msg)
+      },
     }).then((h) => {
       if (disposed) { h.destroy(); return }
       handle = h
-    }).catch((e) => { if (!disposed) setError(e.message || 'Could not mount embedded chat.') })
+    }).catch((e) => {
+      if (disposed) return
+      const msg = e.message || 'Could not mount embedded chat.'
+      setError(msg)
+    })
     return () => { disposed = true; if (handle) handle.destroy() }
   }, [systemPrompt])
 

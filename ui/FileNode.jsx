@@ -1,4 +1,4 @@
-import { fileGlyph, formatBytes, isKeepMarker } from '../domain.js'
+import { fileGlyph, formatBytes, isKeepMarker } from '../paths.js'
 
 // ----------------------------------------------------------------------
 // File tree. Lazy + level-at-a-time: a directory's children are fetched on

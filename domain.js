@@ -6,82 +6,11 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { syntaxHighlighting, HighlightStyle, indentOnInput, syntaxTree } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import katex from 'katex'
-import { IMAGE_EXTS, MARKDOWN_EXTS } from './constants.js'
 
-// ----------------------------------------------------------------------
-// Path helpers. Paths are FS-root-relative, '/'-joined, no leading slash.
-// ----------------------------------------------------------------------
-export function baseName(path) {
-  const p = String(path || '')
-  const i = p.lastIndexOf('/')
-  return i >= 0 ? p.slice(i + 1) : p
-}
-
-export function dirName(path) {
-  const p = String(path || '')
-  const i = p.lastIndexOf('/')
-  return i > 0 ? p.slice(0, i) : ''
-}
-
-export function extOf(name) {
-  const dot = String(name || '').lastIndexOf('.')
-  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
-}
-
-export function isMarkdownPath(path) {
-  return MARKDOWN_EXTS.has(extOf(baseName(path)))
-}
-
-export function isImagePath(path) {
-  return IMAGE_EXTS.has(extOf(baseName(path)))
-}
-
-// A short glyph per file kind for the tree row. Single chars keep the rows
-// dense on mobile.
-export function fileGlyph(name) {
-  const e = extOf(name)
-  if (MARKDOWN_EXTS.has(e)) return 'M'
-  if (IMAGE_EXTS.has(e)) return 'i'
-  if (e === 'py') return 'py'
-  if (e === 'js' || e === 'jsx' || e === 'ts' || e === 'tsx') return 'js'
-  if (e === 'json') return '{}'
-  if (e === 'css') return '#'
-  if (e === 'html') return '<>'
-  if (e === 'sh') return '$'
-  return '·'
-}
-
-export function formatBytes(n) {
-  if (!Number.isFinite(n)) return ''
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`
-}
-
-// A new file/folder name is a single path segment — no slashes (we don't want
-// the create affordance silently materializing nested dirs the owner didn't
-// see) and no traversal. Reject empty/whitespace and the `.keep` marker we use
-// internally to materialize folders.
-export function isValidLeafName(name) {
-  const n = String(name || '').trim()
-  if (!n) return false
-  if (n === '.keep') return false
-  if (n.includes('/')) return false
-  if (n === '.' || n === '..') return false
-  return true
-}
-
-// `.keep` is our folder-materialization marker (the FS API has no mkdir, so a
-// new folder is created by writing `<dir>/.keep`). It's an implementation
-// detail, never shown in the tree.
-export function isKeepMarker(name) {
-  return String(name || '') === '.keep'
-}
-
-// Join a directory path (FS-root-relative, '' = root) with a leaf name.
-export function joinPath(dir, leaf) {
-  return dir ? `${dir}/${leaf}` : leaf
-}
+// The pure path / name / format helpers this module used to also hold now live
+// in paths.js (dependency-free so they unit-test under a bare `node --test`).
+// This module keeps only the CodeMirror + markdown + KaTeX editor engine, which
+// depends on the importmap-provided packages imported above.
 
 // ----------------------------------------------------------------------
 // CodeMirror markdown live-preview engine (adapted inline from the Notes app's

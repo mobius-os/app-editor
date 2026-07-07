@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { baseName } from '../domain.js'
+import { baseName } from '../paths.js'
 import { fsReadBlob } from '../storage.js'
 
 // ----------------------------------------------------------------------

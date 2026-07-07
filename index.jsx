@@ -28,7 +28,6 @@ import {
   fsTree,
   fsWrite,
   loadPrefs,
-  ownerToken,
   readChatHeight,
   savePrefs,
   chatHeightKey,
@@ -36,14 +35,16 @@ import {
 } from './storage.js'
 import {
   baseName,
+  bufferDirtyAfterSave,
   dirName,
+  extOf,
   formatBytes,
   isImagePath,
   isKeepMarker,
   isMarkdownPath,
   isValidLeafName,
   joinPath,
-} from './domain.js'
+} from './paths.js'
 import { CodeEditor } from './ui/CodeEditor.jsx'
 import { ImagePreview } from './ui/ImagePreview.jsx'
 import { NameModal } from './ui/NameModal.jsx'
@@ -113,7 +114,6 @@ export default function App({ appId }) {
   // Kept SEPARATE from saveError because it must survive keystrokes (saveError
   // auto-clears on edit) — it stays until the user saves or reopens the file.
   const [diskNotice, setDiskNotice] = useState(null)
-  const [savedAt, setSavedAt] = useState(null)
   // Bumped every time an agent turn re-reads the open file. The image preview
   // keys its blob fetch on this so a regenerated image at the SAME path (path
   // unchanged) reloads its fresh bytes instead of showing the stale render.
@@ -129,6 +129,9 @@ export default function App({ appId }) {
   const dirtyRef = useRef(false)
   const savingRef = useRef(false)
   const selectedRef = useRef(null)
+  // app_ready fires once per mount (the first successful root load), so a retry
+  // or reconnect-triggered reload doesn't inflate Reflection's open count.
+  const appReadyRef = useRef(false)
   useEffect(() => { contentRef.current = content }, [content])
   useEffect(() => { dirtyRef.current = dirty }, [dirty])
   useEffect(() => { savingRef.current = saving }, [saving])
@@ -136,35 +139,22 @@ export default function App({ appId }) {
 
   // KaTeX's renderToString output (used by the markdown live-preview for
   // $...$ math) needs katex.min.css for its fraction/sizing/positioning rules;
-  // without it every formula renders as overlapping fallback glyphs. A plain
-  // CDN <link> is blocked by the prod CSP (style-src does not allow jsdelivr),
-  // so we fetch the stylesheet through the same-origin /api/proxy and inject it
-  // as an inline <style> (style-src allows 'unsafe-inline'). Pinned to the
-  // importmap's katex version. The @font-face URLs inside the sheet stay
-  // CDN-relative and are blocked by font-src, so the glyphs fall back to the
-  // system math font — readable and correctly laid out, which is the bug being
-  // fixed; bundling the woff2 fonts same-origin would be a platform change.
+  // without it every formula renders as overlapping fallback glyphs. The
+  // platform self-hosts the stylesheet + its woff2 fonts under the same-origin
+  // /vendor/katex/ path (a stable, unversioned symlink to the pinned version —
+  // the same version-proofing as the bare `katex` importmap specifier the
+  // runtime import uses), so a plain <link> loads under the prod CSP
+  // (style-src/font-src 'self') with no external CDN, no /api/proxy round-trip,
+  // and no version skew against the runtime import. The @font-face `./fonts/*`
+  // URLs inside the sheet resolve to /vendor/katex/fonts/*, so glyphs are fully
+  // styled rather than falling back to the system math font.
   useEffect(() => {
-    if (document.querySelector('style[data-ed-katex]')) return undefined
-    let cancelled = false
-    const CSS_URL = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css'
-    const tok = ownerToken()
-    fetch(`/api/proxy?url=${encodeURIComponent(CSS_URL)}`, {
-      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
-    }).then((r) => {
-      if (!r.ok) throw new Error(`KaTeX CSS proxy failed (${r.status})`)
-      return r.text()
-    }).then((css) => {
-      if (cancelled || document.querySelector('style[data-ed-katex]')) return
-      const style = document.createElement('style')
-      style.setAttribute('data-ed-katex', '1')
-      style.textContent = css
-      document.head.appendChild(style)
-    }).catch(() => {
-      // No math styling — KaTeX still renders, just without its layout rules.
-      // Better than a blocked-resource console error loop.
-    })
-    return () => { cancelled = true }
+    if (document.querySelector('link[data-ed-katex]')) return
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = '/vendor/katex/katex.min.css'
+    link.setAttribute('data-ed-katex', '1')
+    document.head.appendChild(link)
   }, [])
 
   // --- Git state for the open file's directory ---
@@ -310,6 +300,9 @@ export default function App({ appId }) {
       if (dirGenRef.current.get('') !== gen) return  // an agent-turn refresh won
       setChildrenByDir((prev) => ({ ...prev, '': entries }))
       setRedactedByDir((prev) => ({ ...prev, '': redacted }))
+      if (!appReadyRef.current) {
+        appReadyRef.current = true
+      }
     } catch (e) {
       if (dirGenRef.current.get('') !== gen) return
       setRootError(e.message || 'Could not load the file tree.')
@@ -319,6 +312,21 @@ export default function App({ appId }) {
   }, [fetchDir])
 
   useEffect(() => { loadRoot() }, [loadRoot])
+
+  // Retry the root when connectivity returns. The FS API is live-only, so a
+  // first load that failed offline (or never landed) would otherwise sit on a
+  // dead error until the owner reopens the app. Fire only on an offline→online
+  // transition (a ref guards against re-firing the initial mount load) and only
+  // when the root actually needs it (errored, or still empty).
+  const wasOnlineRef = useRef(online)
+  useEffect(() => {
+    const wasOnline = wasOnlineRef.current
+    wasOnlineRef.current = online
+    if (online && !wasOnline && (rootError || (childrenByDir[''] || []).length === 0)) {
+      loadRoot()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online])
 
   // Expand/collapse a directory; fetch its children on first expand.
   const toggleDir = useCallback(async (dirPath) => {
@@ -369,6 +377,10 @@ export default function App({ appId }) {
       const m = await fsMeta(path)
       if (selectedRef.current !== path) return
       setMeta(m)
+      // A real user open (not an agent-turn re-read) — record which file types
+      // the owner actually inspects, no path/name PII.
+      if (!external) {
+      }
       if (m.is_binary) {
         // Binary: image preview component or a "binary file" notice render from
         // meta; no text buffer to load.
@@ -407,12 +419,31 @@ export default function App({ appId }) {
     }
   }, [])
 
+  // Reset the editor back to the empty "no file open" state, clearing EVERY
+  // open-file field in one place. Centralized so the delete-success, delete-404,
+  // and selection-cleared paths all clear the same set — the delete-404 path
+  // used to clear fewer fields (leaving a stale dirty dot / baseline), and
+  // clearing the selection used to leave a save-error or disk-notice banner
+  // hanging above "No file open".
+  const clearOpenFile = useCallback(() => {
+    setSelectedPath(null)
+    setMeta(null)
+    setContent('')
+    setGit(null)
+    setGitError(null)
+    setFileError(null)
+    setDirty(false)
+    setDiskNotice(null)
+    setSaveError(null)
+    baselineRef.current = ''
+    contentRef.current = ''
+  }, [])
+
   // Select a file (from the tree or a git-panel tap).
   const selectFile = useCallback((path) => {
     setSelectedPath(path)
     setSaveError(null)
     setDiskNotice(null)
-    setSavedAt(null)
     setGitOpen(false)
     restorePathRef.current = path
     savePrefs({ lastPath: path, expanded: Array.from(expanded) })
@@ -577,6 +608,16 @@ export default function App({ appId }) {
 
   const clearFocus = useCallback(() => setFocusRoot(''), [])
 
+  // Open a directory row tapped in the git panel. A wholly-untracked folder
+  // arrives from git as a directory path — opening it as a FILE 404s and reads
+  // as "This file no longer exists", so instead focus the tree on that subtree.
+  // On a narrow viewport the drawer is closed, so reveal it to show the result;
+  // on desktop the drawer is a static column already in view.
+  const openDirFromGit = useCallback((dirPath) => {
+    focusDir(dirPath)
+    if (typeof window !== 'undefined' && window.innerWidth < 760) openNav()
+  }, [focusDir, openNav])
+
   // --- Create a file or folder ---
   // The create target is the focused folder if any, else the directory of the
   // selected file, else the root. A new file is an empty write; a new folder is
@@ -641,12 +682,16 @@ export default function App({ appId }) {
       if (targetDir) setExpanded((prev) => { const n = new Set(prev); n.add(targetDir); return n })
       await loadDir(targetDir)
       closeCreate()
-      if (kind === 'file') selectFile(joinPath(targetDir, name))
+      // Open the new file THROUGH the dirty-switch guard — a direct selectFile
+      // here would silently discard an unsaved buffer without the discard modal.
+      // The created row is already re-listed above, so it stays visible even if
+      // the switch is deferred behind (or cancelled at) the discard prompt.
+      if (kind === 'file') attemptSelectFile(joinPath(targetDir, name), { closeNavAfter: false })
     } catch (e) {
       setCreating(false)
       setCreateError(e.message || 'Could not create.')
     }
-  }, [createModal, childrenByDir, loadDir, selectFile, closeCreate])
+  }, [createModal, childrenByDir, loadDir, attemptSelectFile, closeCreate])
 
   // --- Delete a file ---
   // The tree's per-row ✕ opens a confirm dialog (the iframe blocks
@@ -676,33 +721,26 @@ export default function App({ appId }) {
       // reflected wherever the row lived (root '' included).
       await loadDir(dirName(path))
       // If the deleted file was open, clear the editor back to the empty state.
-      if (selectedRef.current === path) {
-        setSelectedPath(null)
-        setMeta(null)
-        setContent('')
-        setGit(null)
-        setGitError(null)
-        setFileError(null)
-        setDirty(false)
-        baselineRef.current = ''
-      }
+      if (selectedRef.current === path) clearOpenFile()
       closeDelete()
     } catch (e) {
       setDeleting(false)
-      // 404 = already gone: treat as success (refresh + close) rather than an error.
+      // 404 = already gone: treat as success (refresh + close) rather than an
+      // error — same full cleanup as the normal path so no stale dirty/baseline
+      // or banner survives.
       if (e.status === 404) {
         loadDir(dirName(path))
-        if (selectedRef.current === path) { setSelectedPath(null); setMeta(null); setContent(''); setGit(null) }
+        if (selectedRef.current === path) clearOpenFile()
         closeDelete()
         return
       }
       setDeleteError(e.message || 'Could not delete this file.')
     }
-  }, [deleteTarget, loadDir, closeDelete])
+  }, [deleteTarget, loadDir, closeDelete, clearOpenFile])
 
   // When the selection changes, load the file + its git status.
   useEffect(() => {
-    if (!selectedPath) { setMeta(null); setContent(''); setGit(null); return }
+    if (!selectedPath) { clearOpenFile(); return }
     loadFile(selectedPath)
     loadGit(selectedPath)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -745,23 +783,35 @@ export default function App({ appId }) {
 
   // The actual write — shared by the normal save and the confirmed-overwrite
   // path. No divergence check here; the caller decides whether to gate.
+  //
+  // Snapshot the file + buffer AT WRITE TIME (via refs, not render-captured
+  // closure vars) so the state we clean afterwards matches what we actually
+  // wrote. After the PUT returns we only mark the buffer clean if we're still on
+  // the same file AND the live buffer still equals what we wrote — otherwise we
+  // set the baseline to the saved text and recompute `dirty` from the LIVE
+  // buffer, so keystrokes typed during the in-flight write stay dirty instead of
+  // being silently marked saved and then lost on the next file switch.
   const writeNow = useCallback(async () => {
+    const savedPath = selectedRef.current
+    if (!savedPath) return
+    const savedText = contentRef.current
     setSaving(true)
     setSaveError(null)
     try {
-      await fsWrite(selectedPath, content)
-      baselineRef.current = content
-      setDirty(false)
-      setDiskNotice(null)  // the user resolved the divergence by saving
-      setSavedAt(Date.now())
-      // The save may have changed git status (new modified/untracked) — refresh.
-      loadGit(selectedPath)
+      await fsWrite(savedPath, savedText)
+      if (selectedRef.current === savedPath) {
+        baselineRef.current = savedText
+        setDirty(bufferDirtyAfterSave(savedText, contentRef.current))
+        setDiskNotice(null)  // the user resolved the divergence by saving
+        // The save may have changed git status (new modified/untracked) — refresh.
+        loadGit(savedPath)
+      }
     } catch (e) {
-      setSaveError(e.message || 'Could not save.')
+      if (selectedRef.current === savedPath) setSaveError(e.message || 'Could not save.')
     } finally {
       setSaving(false)
     }
-  }, [selectedPath, content, loadGit])
+  }, [loadGit])
 
   const handleSave = useCallback(async () => {
     if (!selectedPath || !meta || !meta.writable) return
@@ -797,14 +847,6 @@ export default function App({ appId }) {
     // their unsaved buffer is preserved by the dirty-guard in loadFile.
     if (selectedRef.current) loadFile(selectedRef.current, { external: true })
   }, [loadFile])
-
-  // Auto-clear savedAt after 2s so the Save button reverts from "Saved" to
-  // neutral without requiring user action.
-  useEffect(() => {
-    if (!savedAt) return undefined
-    const t = setTimeout(() => setSavedAt(null), 2000)
-    return () => clearTimeout(t)
-  }, [savedAt])
 
   // Cmd/Ctrl-S saves (when writable). A keyboard convenience; the Save button
   // is the primary affordance.
@@ -858,11 +900,32 @@ export default function App({ appId }) {
   // tiny column can't invert the clamp.
   const maxChatPx = useCallback((total) => Math.max(CHAT_MIN_PX, total - CHAT_DIVIDER_PX), [])
 
+  // Re-clamp the chat height whenever the main column changes size. Without
+  // this, a tall chat pane keeps its fixed px height after a rotation or when
+  // the on-screen keyboard shrinks the viewport, pushing the embedded composer
+  // and the resize divider off-screen with no way to drag them back. We only
+  // ever shrink toward the new max (growing the column leaves the user's chosen
+  // height alone) and never mark the height "touched" — an automatic correction
+  // must not defeat the fresh-device 50/50 spawn.
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(() => {
+      const total = el.getBoundingClientRect().height
+      if (!total) return
+      const maxPx = maxChatPx(total)
+      setChatHeight((v) => Math.min(maxPx, Math.max(CHAT_MIN_PX, v)))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [maxChatPx])
+
   // Opening the chat for the first time (no height chosen yet) spawns it at
   // half the main column — the house 50/50 split. After that the user's own
   // height (dragged or restored) wins.
   const toggleChat = useCallback(() => {
-    if (!chatOpen && !chatHeightTouched.current) {
+    const opening = !chatOpen
+    if (opening && !chatHeightTouched.current) {
       const total = mainRef.current ? mainRef.current.getBoundingClientRect().height : 0
       if (total) {
         const maxPx = maxChatPx(total)
@@ -1001,7 +1064,6 @@ export default function App({ appId }) {
   }
 
   const canSave = meta && meta.writable && !meta.is_binary
-  const saveLabel = saving ? 'Saving…' : 'Save'
 
   return (
     <div className="ed-root">
@@ -1043,11 +1105,15 @@ export default function App({ appId }) {
         </div>
         <div className="ed-header-right">
           {!online && <span className="ed-offline-pill" title="The Editor needs a connection">Offline</span>}
-          {selectedPath && canSave && dirty && (
+          {selectedPath && canSave && (
+            // Persistent: mounted for any writable text file so the header
+            // layout doesn't jump when an edit makes it active. It goes visually
+            // quiet + disabled when there's nothing to save (the .is-quiet CSS),
+            // and becomes the primary accent button once the buffer is dirty.
             <button
-              className="ed-btn ed-btn-primary"
+              className={`ed-btn ed-btn-primary${dirty ? '' : ' is-quiet'}`}
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !dirty}
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -1169,6 +1235,7 @@ export default function App({ appId }) {
               open={gitOpen}
               onToggle={() => setGitOpen((v) => !v)}
               onOpenFile={(p) => attemptSelectFile(p)}
+              onOpenDir={openDirFromGit}
             />
           )}
           {diskNotice && <div className="ed-save-error is-notice" role="status">{diskNotice}</div>}
