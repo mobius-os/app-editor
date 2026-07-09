@@ -54,6 +54,8 @@ import { FileNode } from './ui/FileNode.jsx'
 import { GitPanel } from './ui/GitPanel.jsx'
 import { ChatPanel } from './ui/ChatPanel.jsx'
 import { ChatBubbleIcon } from './ui/ChatBubbleIcon.jsx'
+import { NewFileIcon } from './ui/NewFileIcon.jsx'
+import { NewFolderIcon } from './ui/NewFolderIcon.jsx'
 
 // ----------------------------------------------------------------------
 // Editor — a whole-filesystem viewer + editor for Möbius.
@@ -1280,8 +1282,9 @@ export default function App({ appId }) {
                 onClick={() => openCreate('file')}
                 disabled={!online}
                 title="New file"
+                aria-label="New file"
               >
-                + File
+                <NewFileIcon size={17} />
               </button>
               <button
                 type="button"
@@ -1289,8 +1292,9 @@ export default function App({ appId }) {
                 onClick={() => openCreate('folder')}
                 disabled={!online}
                 title="New folder"
+                aria-label="New folder"
               >
-                + Folder
+                <NewFolderIcon size={17} />
               </button>
             </div>
           </div>

@@ -50,7 +50,7 @@ export const CSS = `
 /* /mobius-ui:Header */
 .ed-header-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .ed-open-path {
-  min-width: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em;
+  min-width: 0; font-size: 15px; font-weight: 700; letter-spacing: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ed-open-path.is-muted { color: var(--muted); font-weight: 650; }
@@ -175,26 +175,18 @@ export const CSS = `
 .ed-drawer-sub { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .ed-drawer-actions { margin-left: auto; display: flex; gap: 6px; align-self: center; }
 .ed-new-btn {
-  position: relative;
-  display: inline-flex; align-items: center; min-height: 30px; padding: 4px 10px;
-  border-radius: 8px; border: 1px solid var(--border);
-  background: var(--surface2, var(--surface)); color: var(--text);
-  font-family: var(--font); font-size: 12px; font-weight: 650; cursor: pointer; white-space: nowrap;
-  transition: background 0.14s ease, border-color 0.14s ease;
+  width: 44px; height: 44px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px; border: 1px solid transparent;
+  background: transparent; color: var(--muted);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.08s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-/* The pill stays visually compact (30px) but its tap target is a full 44px:
-   a transparent overlay extends the hit box vertically without changing layout.
-   The two + buttons sit side by side with a gap, so the vertical-only extension
-   never overlaps its neighbor. */
-.ed-new-btn::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 50%;
-  transform: translateY(-50%); height: 44px;
-}
-@media (hover: hover) { .ed-new-btn:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border-color: var(--accent); } }
-.ed-new-btn:active { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); border-color: var(--accent); }
+@media (hover: hover) { .ed-new-btn:hover { background: var(--surface2, var(--surface)); color: var(--text); } }
+.ed-new-btn:active { background: var(--surface3, var(--surface2)); color: var(--text); transform: scale(0.94); }
 .ed-new-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.ed-new-btn:disabled { opacity: 0.5; cursor: default; }
+.ed-new-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
 
 /* Focus breadcrumb — shows the focused folder + a way back to the full tree. */
 .ed-focus-bar {
@@ -225,11 +217,20 @@ export const CSS = `
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* mobius-ui:Scrollskin v1 — keep in sync; library candidate. Add the ed-scroll class to a scroller. */
-.ed-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
-.ed-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
-.ed-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: padding-box; }
-.ed-scroll::-webkit-scrollbar-track { background: transparent; }
+/* mobius-ui:Scrollskin v2 — keep in sync; hidden by default, content stays scrollable. */
+.ed-scroll,
+.ed-git-body,
+.ed-pane-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ed-scroll::-webkit-scrollbar,
+.ed-git-body::-webkit-scrollbar,
+.ed-pane-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 /* /mobius-ui:Scrollskin */
 
 /* Side gutter (8px) so the rows float as rounded pills inset from the
@@ -322,7 +323,7 @@ export const CSS = `
 .ed-row-size { flex: 0 0 auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ed-git-badge {
   flex: 0 0 auto; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 700;
-  letter-spacing: 0.02em; text-transform: uppercase;
+  letter-spacing: 0;
   background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
 }
 .ed-row-note {
@@ -362,10 +363,10 @@ export const CSS = `
 .ed-git-count.is-clean { color: var(--muted); font-weight: 600; }
 .ed-git-body { padding: 4px 12px 12px; max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; }
 .ed-git-group { margin-top: 8px; }
-.ed-git-group-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 4px; }
 /* Changed-file row = the Hermex "GitFileCard": bold basename over a dimmed
    monospaced parent dir, with a semantic status chip on the trailing edge.
    You read the file identity first, its location second. */
+.ed-git-group-label { font-size: 11px; font-weight: 700; letter-spacing: 0; color: var(--muted); margin-bottom: 4px; }
 .ed-git-file {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px;
   margin-bottom: 6px; padding: 8px 10px; text-align: left; border-radius: 10px;
@@ -434,7 +435,7 @@ export const CSS = `
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
 }
-.ed-empty-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.ed-empty-title { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: 0; }
 .ed-empty-text { margin: 0; font-size: 13.5px; line-height: 1.55; }
 /* /mobius-ui:Empty */
 .ed-empty-tree { padding: 28px 20px; }
@@ -527,10 +528,10 @@ export const CSS = `
 }
 .ed-modal {
   width: 100%; max-width: 360px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-  padding: 18px 18px 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 18px 16px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.32);
 }
-.ed-modal-title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.ed-modal-title { font-size: 15px; font-weight: 700; letter-spacing: 0; }
 .ed-modal-where {
   margin-top: 3px; font-family: var(--mono); font-size: 11.5px; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
