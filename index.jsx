@@ -326,6 +326,7 @@ export default function App({ appId }) {
     } catch (e) {
       if (dirGenRef.current.get('') !== gen) return
       emitSignal('error', { message: e && e.message ? e.message : 'tree-root failed', source: 'tree-root' })
+      if (e && typeof e.status === 'number') emitSignal('fs_error', { status: e.status, source: 'tree-root' })
       setRootError(e.message || 'Could not load the file tree.')
     } finally {
       if (dirGenRef.current.get('') === gen) setRootLoading(false)
@@ -402,7 +403,7 @@ export default function App({ appId }) {
       // A real user open (not an agent-turn re-read) — record which file types
       // the owner actually inspects, no path/name PII.
       if (!external) {
-        emitSignal('item_opened', { type: 'file', ext: extOf(baseName(path)), bytes: m.size || 0, binary: !!m.is_binary })
+        emitSignal('file_opened', { type: 'file', ext: extOf(baseName(path)), bytes: m.size || 0, binary: !!m.is_binary })
       }
       if (m.is_binary) {
         // Binary: image preview component or a "binary file" notice render from
@@ -428,7 +429,7 @@ export default function App({ appId }) {
     } catch (e) {
       if (selectedRef.current !== path) return
       emitSignal('error', { message: e && e.message ? e.message : 'load failed', source: 'load' })
-      if (e && typeof e.status === 'number') emitSignal('file_open_error', { status: e.status })
+      if (e && typeof e.status === 'number') emitSignal('fs_error', { status: e.status, source: 'load' })
       if (preserveBuffer) {
         // The user still has a valid buffer open — don't replace it with an
         // error pane (that would visually destroy their unsaved work). Surface
@@ -641,6 +642,7 @@ export default function App({ appId }) {
       return entries
     } catch (e) {
       emitSignal('error', { message: e && e.message ? e.message : 'tree-dir failed', source: 'tree-dir' })
+      if (e && typeof e.status === 'number') emitSignal('fs_error', { status: e.status, source: 'tree-dir' })
       setErrorDirs((prev) => ({ ...prev, [dirPath]: e.message || 'Could not list this folder.' }))
       return null
     } finally {
@@ -765,6 +767,7 @@ export default function App({ appId }) {
     } catch (e) {
       setCreating(false)
       emitSignal('error', { message: e && e.message ? e.message : 'create failed', source: 'create' })
+      if (e && typeof e.status === 'number') emitSignal('fs_error', { status: e.status, source: 'create' })
       setCreateError(e.message || 'Could not create.')
     }
   }, [createModal, childrenByDir, loadDir, attemptSelectFile, closeCreate])
@@ -821,6 +824,7 @@ export default function App({ appId }) {
         return
       }
       emitSignal('error', { message: e && e.message ? e.message : 'delete failed', source: 'delete' })
+      if (e && typeof e.status === 'number') emitSignal('fs_error', { status: e.status, source: 'delete' })
       setDeleteError(e.message || 'Could not delete this file.')
     }
   }, [deleteTarget, loadDir, closeDelete, clearOpenFile])
@@ -893,10 +897,11 @@ export default function App({ appId }) {
         // The save may have changed git status (new modified/untracked) — refresh.
         loadGit(savedPath)
       }
-      emitSignal('item_updated', { type: 'file', ext: extOf(baseName(savedPath)), bytes: savedText.length })
+      emitSignal('file_saved', { type: 'file', ext: extOf(baseName(savedPath)), bytes: savedText.length })
     } catch (e) {
       if (selectedRef.current === savedPath) setSaveError(e.message || 'Could not save.')
       emitSignal('error', { message: e && e.message ? e.message : 'save failed', source: 'save' })
+      if (e && typeof e.status === 'number') emitSignal('fs_error', { status: e.status, source: 'save' })
     } finally {
       setSaving(false)
     }
@@ -915,7 +920,7 @@ export default function App({ appId }) {
       const diskText = await fsReadText(selectedPath)
       if (selectedRef.current !== selectedPath) return  // selection moved on
       if (diskText !== baselineRef.current) {
-        emitSignal('overwrite_conflict', { resolution: 'prompt' })
+        emitSignal('save_conflict', { resolution: 'prompt' })
         const ready = await openBackSurface('editor-overwrite', overwriteHandleRef, () => {
           if (savingRef.current) return
           setPendingOverwrite(false)
@@ -932,14 +937,14 @@ export default function App({ appId }) {
   }, [selectedPath, meta, writeNow, openBackSurface])
 
   const confirmOverwrite = useCallback(() => {
-    emitSignal('overwrite_conflict', { resolution: 'overwrite' })
+    emitSignal('save_conflict', { resolution: 'overwrite' })
     closeBackHandle(overwriteHandleRef)
     setPendingOverwrite(false)
     writeNow()
   }, [writeNow, closeBackHandle])
 
   const cancelOverwrite = useCallback(() => {
-    emitSignal('overwrite_conflict', { resolution: 'cancel' })
+    emitSignal('save_conflict', { resolution: 'cancel' })
     closeBackHandle(overwriteHandleRef)
     setPendingOverwrite(false)
     // Re-read the file so the user can see what's on disk now and reconcile;

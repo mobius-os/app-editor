@@ -1,7 +1,7 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "description": "Browse and edit any file on your M\u00f6bius, with an agent that can edit for you.",
   "author": "mobius-os",
   "license": "MIT",
@@ -21,7 +21,9 @@
     "ui/FileNode.jsx",
     "ui/GitPanel.jsx",
     "ui/ChatPanel.jsx",
-    "ui/ChatBubbleIcon.jsx"
+    "ui/ChatBubbleIcon.jsx",
+    "ui/NewFileIcon.jsx",
+    "ui/NewFolderIcon.jsx"
   ],
   "icon": "icon.png",
   "offline_capable": false,
