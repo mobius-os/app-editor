@@ -233,7 +233,14 @@ export default function App({ appId }) {
         break
       }
     } while (cursor)
-    return { entries: all.slice(0, LISTING_ENTRY_CAP), redacted, capped }
+    // The FS root resolves to "." on the server, so ROOT-level entries come back
+    // path-prefixed "./name" (nested levels are already clean). Strip the "./"
+    // so every path we hold is clean FS-root-relative — the breadcrumb, drill-in
+    // navigation, and every /api/fs call depend on that.
+    const entries = all.slice(0, LISTING_ENTRY_CAP).map((e) => (
+      e && typeof e.path === 'string' && e.path.startsWith('./') ? { ...e, path: e.path.slice(2) } : e
+    ))
+    return { entries, redacted, capped }
   }, [])
 
   // Fetch a directory into the cache under a generation guard so a slow fetch
