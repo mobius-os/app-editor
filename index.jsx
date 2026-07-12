@@ -37,7 +37,7 @@ import {
 } from './storage.js'
 import {
   baseName, dirName, parentDir, extOf, bufferDirtyAfterSave,
-  isImagePath, isKeepMarker, isMarkdownPath, isValidLeafName, joinPath,
+  isKeepMarker, isValidLeafName, joinPath,
   sortEntries, pushRecent,
 } from './paths.js'
 import { Icon } from './ui/Icons.jsx'
@@ -180,7 +180,6 @@ export default function App({ appId }) {
 
   // --- Shell back-stack handles ---
   const navHandleRef = useRef(null)       // drawer
-  const upHandleRef = useRef(null)        // "ascend one folder level"
   const fileHandleRef = useRef(null)      // phone file overlay
   const overflowHandleRef = useRef(null)
   const propsHandleRef = useRef(null)
@@ -319,26 +318,15 @@ export default function App({ appId }) {
     navigateTo(entry.path)
   }, [navigateTo])
 
-  // Keep the shell back surface armed to ascend exactly one folder level while
-  // we are below the root. Reconciled from cwd: entering a subfolder opens one
-  // (if not already armed); Back fires onBack → navigateTo(parent) → this effect
-  // re-arms from the new level (or closes at the root). One handle at a time.
-  useEffect(() => {
-    if (cwd === '') {
-      if (upHandleRef.current) closeBackHandle(upHandleRef)
-      return
-    }
-    if (upHandleRef.current) return
-    if (window.mobius?.nav?.open) {
-      const handle = window.mobius.nav.open('editor-up', () => {
-        if (upHandleRef.current === handle) upHandleRef.current = null
-        navigateTo(parentDir(cwdRef.current))
-      })
-      upHandleRef.current = handle
-      handle.ready?.catch(() => {})
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwd])
+  // Ascend one folder level. Directory navigation is NOT wired to the shell
+  // back-stack: the tappable breadcrumb and this Up button are the ascent
+  // affordances (MiXplorer's model). The shell back-stack is reserved for the
+  // one-at-a-time OVERLAYS (drawer, file viewer on phone, modals, chat) — a
+  // persistent directory back-surface underneath those would be popped in the
+  // same gesture that closes an overlay, ascending a level unexpectedly.
+  const ascend = useCallback(() => {
+    if (cwdRef.current) navigateTo(parentDir(cwdRef.current))
+  }, [navigateTo])
 
   // --- Initial load + prefs restore ---
   useEffect(() => {
@@ -447,24 +435,37 @@ export default function App({ appId }) {
     contentRef.current = ''
   }, [closeBackHandle])
 
+  // Guard against discarding unsaved edits. Holds the pending destination: a
+  // { path } to open a DIFFERENT file, or { path: null } to CLOSE the current
+  // file (the phone Back / back-arrow path — a close still loses the buffer, so
+  // it needs the same discard prompt as a switch).
+  const openSwitchPrompt = useCallback(async (target) => {
+    const ready = await openBackSurface('editor-discard', switchHandleRef, () => setPendingSwitch(null))
+    if (!ready) return
+    setPendingSwitch(target)
+  }, [openBackSurface])
+
+  // Close the open file, but prompt first if the buffer is dirty so a Back tap
+  // can't silently discard edits. The old app had no user-facing close-to-list
+  // path, so this guard is new — without it, drilling Back out of an edited file
+  // wipes it. Used by both the back-arrow and the phone shell Back surface.
+  const requestCloseFile = useCallback(() => {
+    if (dirtyRef.current) openSwitchPrompt({ path: null })
+    else clearOpenFile()
+  }, [openSwitchPrompt, clearOpenFile])
+
   // Open a file for real. On a phone this registers a Back surface so the file
-  // is a pushed screen; on desktop it just fills the docked detail pane.
+  // is a pushed screen (Back routes through the dirty-close guard); on desktop
+  // it just fills the docked detail pane.
   const selectFile = useCallback(async (path) => {
     setSelectedPath(path)
     setSaveError(null)
     setDiskNotice(null)
     setNavOpen(false)
     if (!isDesktop) {
-      await openBackSurface('editor-file', fileHandleRef, () => { clearOpenFile() })
+      await openBackSurface('editor-file', fileHandleRef, () => { requestCloseFile() })
     }
-  }, [isDesktop, openBackSurface, clearOpenFile])
-
-  // Guard against discarding unsaved edits when opening a DIFFERENT file.
-  const openSwitchPrompt = useCallback(async (target) => {
-    const ready = await openBackSurface('editor-discard', switchHandleRef, () => setPendingSwitch(null))
-    if (!ready) return
-    setPendingSwitch(target)
-  }, [openBackSurface])
+  }, [isDesktop, openBackSurface, requestCloseFile])
 
   const attemptSelectFile = useCallback((path) => {
     if (path && path !== selectedRef.current && dirtyRef.current) {
@@ -479,7 +480,8 @@ export default function App({ appId }) {
     closeBackHandle(switchHandleRef)
     setPendingSwitch(null)
     if (target && target.path) selectFile(target.path)
-  }, [pendingSwitch, selectFile, closeBackHandle])
+    else if (target) clearOpenFile()   // { path: null } = discard-and-close
+  }, [pendingSwitch, selectFile, clearOpenFile, closeBackHandle])
 
   const cancelSwitch = useCallback(() => {
     closeBackHandle(switchHandleRef)
@@ -841,7 +843,7 @@ export default function App({ appId }) {
 
   // --- Cleanup all shell handles on unmount ---
   useEffect(() => () => {
-    for (const ref of [navHandleRef, upHandleRef, fileHandleRef, overflowHandleRef, propsHandleRef, chatHandleRef, createHandleRef, deleteHandleRef, switchHandleRef, overwriteHandleRef]) {
+    for (const ref of [navHandleRef, fileHandleRef, overflowHandleRef, propsHandleRef, chatHandleRef, createHandleRef, deleteHandleRef, switchHandleRef, overwriteHandleRef]) {
       try { ref.current?.close?.() } catch {}
       ref.current = null
     }
@@ -1001,7 +1003,7 @@ export default function App({ appId }) {
       truncatedTotal={truncatedTotal}
       online={online}
       showBack={!isDesktop}
-      onBack={clearOpenFile}
+      onBack={requestCloseFile}
       onSave={handleSave}
       onAskAgent={askAgent}
       fileReloadKey={fileReloadKey}
@@ -1022,12 +1024,23 @@ export default function App({ appId }) {
           >
             <Icon name="menu" size={22} />
           </button>
+          {cwd !== '' && (
+            <button
+              type="button"
+              className="ex-icon-btn ex-up-btn"
+              onClick={ascend}
+              aria-label="Up one folder"
+              title="Up one folder"
+            >
+              <Icon name="arrow-up" size={20} />
+            </button>
+          )}
           <Breadcrumb path={cwd} onNavigate={navigateTo} />
           <div className="ex-appbar-actions">
             <button
               type="button"
               className={`ex-icon-btn${filterOpen ? ' is-active' : ''}`}
-              onClick={() => setFilterOpen((v) => !v)}
+              onClick={() => { if (filterOpen) setFilter(''); setFilterOpen((v) => !v) }}
               aria-label="Filter this folder"
               aria-pressed={filterOpen}
               title="Filter"
@@ -1116,16 +1129,17 @@ export default function App({ appId }) {
         </main>
       </div>
 
-      {chatOpen && (
-        <div className="ex-chat-sheet">
+      {/* Mounted once opened and only HIDDEN when closed (display:none), never
+          unmounted — remounting would destroy the chat iframe and kill a
+          streaming turn + the onTurnDone live-reload loop. */}
+      {chatMounted && (
+        <div className="ex-chat-sheet" style={chatOpen ? undefined : { display: 'none' }}>
           <div className="ex-chat-sheet-head">
             <span className="ex-chat-sheet-title">Agent</span>
             <button type="button" className="ex-icon-btn" onClick={closeChat} aria-label="Close chat"><Icon name="x" size={20} /></button>
           </div>
           <div className="ex-chat-sheet-body">
-            {chatMounted && (
-              <ChatPanel onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
-            )}
+            <ChatPanel onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
           </div>
         </div>
       )}
@@ -1187,8 +1201,8 @@ export default function App({ appId }) {
       {pendingSwitch && (
         <ConfirmModal
           title="Discard unsaved changes?"
-          body={<>You have unsaved edits in <code className="ed-modal-code">{baseName(selectedPath)}</code>. Opening another file will discard them.</>}
-          confirmLabel="Discard & open"
+          body={<>You have unsaved edits in <code className="ed-modal-code">{baseName(selectedPath)}</code>. {pendingSwitch.path ? 'Opening another file' : 'Closing this file'} will discard them.</>}
+          confirmLabel={pendingSwitch.path ? 'Discard & open' : 'Discard & close'}
           onConfirm={confirmSwitch}
           onCancel={cancelSwitch}
         />
