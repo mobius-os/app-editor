@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FS, PREFS_PATH, CHAT_HEIGHT_VERSION, CHAT_MIN_PX } from './constants.js'
+import { FS, PREFS_PATH, DEFAULT_PREFS } from './constants.js'
 
 // The owner JWT — written by the shell at login. /api/fs/* is owner-only and
 // the app `token` prop is app-scoped (would 401), so we read the owner token
@@ -43,9 +43,15 @@ export async function fsJSON(pathQuery) {
 }
 
 // List one directory level. `path` is relative to the FS root ("" = root).
-export function fsTree(path, cursor) {
+// `counts` opts into the server adding an immediate child_count to each
+// DIRECTORY entry (one bounded scandir per subdir on the returned page). The
+// server ignores the param on an old build, so entries simply arrive without
+// child_count and the UI degrades to no item count — feature-detected, not
+// version-gated.
+export function fsTree(path, cursor, { counts = false } = {}) {
   const q = new URLSearchParams({ path: path || '' })
   if (cursor) q.set('cursor', cursor)
+  if (counts) q.set('counts', '1')
   return fsJSON(`/tree?${q.toString()}`)
 }
 
@@ -71,11 +77,33 @@ export async function fsReadText(path) {
   return r.text()
 }
 
-// Read a file as a Blob (for image preview). <img src> can't carry an auth
-// header, so we fetch the bytes and convert to an object URL at the call site.
-// cache: 'reload' bypasses the HTTP cache so an image the agent regenerated at
-// the same path returns its FRESH bytes — without it the browser would serve
-// the stale cached body and the preview would show the old image until reopened.
+// Peek the first chunk of a TEXT file that is over the server's inline/preview
+// cap (which would otherwise 413). Returns { text, truncated, total } — text is
+// the leading bytes the server sent, truncated is true when it withheld the
+// rest, total is the full size in bytes (from the X-Mobius-Total-Size header).
+// On an OLD server (no head support) the request 413s like a normal read; the
+// caller catches that and shows the "too large — ask the agent" notice, so this
+// is a pure enhancement. Never used for binaries.
+export async function fsReadHead(path) {
+  const tok = ownerToken()
+  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}&head=1`, {
+    headers: { Authorization: `Bearer ${tok}` },
+  })
+  if (!r.ok) {
+    let detail = `Could not read the file (${r.status}).`
+    try { detail = (await r.json()).detail || detail } catch { /* text body */ }
+    throw new FsError(detail, r.status)
+  }
+  const truncated = r.headers.get('X-Mobius-Truncated') === '1'
+  const total = Number(r.headers.get('X-Mobius-Total-Size')) || null
+  return { text: await r.text(), truncated, total }
+}
+
+// Read a file as a Blob (for image preview / thumbnails). <img src> can't carry
+// an auth header, so we fetch the bytes and convert to an object URL at the
+// call site. cache: 'reload' bypasses the HTTP cache so an image the agent
+// regenerated at the same path returns its FRESH bytes.
 export async function fsReadBlob(path) {
   const tok = ownerToken()
   if (!tok) throw new FsError('Not signed in as the owner.', 401)
@@ -129,6 +157,19 @@ export function fsGit(path) {
   return fsJSON(`/git?path=${encodeURIComponent(path || '')}`)
 }
 
+// Disk usage of the /data filesystem (statvfs) → { total, used, free, path } in
+// bytes. Returns null when the server doesn't support it (old build → 404) so
+// the status-bar gauge is a pure enhancement, feature-detected. Honest label:
+// this is the HOST /data filesystem, not a Möbius quota.
+export async function fsDisk() {
+  try {
+    return await fsJSON('/disk')
+  } catch (e) {
+    if (e && e.status === 404) return null  // endpoint not deployed yet
+    throw e
+  }
+}
+
 // ----------------------------------------------------------------------
 // Online/offline. /api/fs/* needs the network — there is no offline mirror —
 // so prefer the shell's probed reachability verdict when available. The browser
@@ -156,55 +197,28 @@ export function useOnline() {
 }
 
 // ----------------------------------------------------------------------
-// Per-app UI prefs (last-opened path, expanded dirs) persisted via
-// window.mobius.storage so a reopen lands where the owner left off. Best-effort
-// — a failure just means we open at the root. chat_id.json is owned by the
-// chat helper's `persist`, not written here.
+// Per-app UI prefs (view mode, sort, folders-first, bookmarks, recents, last
+// directory) persisted via window.mobius.storage so a reopen lands where the
+// owner left off with their chosen layout. Best-effort — a failure just means
+// we open at the root with defaults. chat_id.json is owned by the chat helper's
+// `persist`, not written here.
 // ----------------------------------------------------------------------
+function storageApi() {
+  return (typeof window !== 'undefined' && window.mobius && window.mobius.storage) || null
+}
 
+// Load prefs merged over the defaults so a partial/old blob still yields every
+// field. Never rejects.
 export function loadPrefs() {
-  const ms = (typeof window !== 'undefined' && window.mobius && window.mobius.storage) || null
-  if (!ms || typeof ms.get !== 'function') return Promise.resolve(null)
-  return ms.get(PREFS_PATH).catch(() => null)
+  const ms = storageApi()
+  if (!ms || typeof ms.get !== 'function') return Promise.resolve({ ...DEFAULT_PREFS })
+  return ms.get(PREFS_PATH)
+    .then((p) => ({ ...DEFAULT_PREFS, ...(p && typeof p === 'object' ? p : {}) }))
+    .catch(() => ({ ...DEFAULT_PREFS }))
 }
 
 export function savePrefs(prefs) {
-  const ms = (typeof window !== 'undefined' && window.mobius && window.mobius.storage) || null
+  const ms = storageApi()
   if (!ms || typeof ms.set !== 'function') return
   ms.set(PREFS_PATH, prefs).catch(() => {})
-}
-
-// ----------------------------------------------------------------------
-// Chat/editor split height. Persisted to localStorage (keyed by app) rather
-// than ui-prefs.json — it's a px layout preference that changes on every drag
-// and we don't want each pixel hitting the storage round-trip the way the
-// expanded-dir set does.
-//
-// Resize bounds are PIXELS derived from the embed's composer pill, never a
-// fraction of the column. The chat-pane MINIMUM equals the composer
-// input-pill band (CHAT_MIN_PX): dragging the divider all the way down
-// collapses the chat TRANSCRIPT to zero but leaves the pill fully visible
-// (the composer is pinned at the bottom of the chat iframe — "full vibe
-// writing"), and the chat can never shrink below it. The MAXIMUM is the
-// column height minus the divider, so the editor pane above CAN collapse to
-// zero while the pill — and the divider you grab to come back — stay on
-// screen. CHAT_MIN_PX = the embed pill (≈48px) + its 8px/8px foot padding
-// ≈ 64px; the shell publishes the live foot height as the `--composer-h`
-// CSS var (default 80px in ChatView.css), but the embed strips the device
-// safe-area gutter, so the steadier ~64px constant is what the panel floors
-// to rather than reading a relayed height across three frames.
-// Nothing stored yet → readChatHeight returns null and the first open spawns
-// the chat at half the main column (the house 50/50 split latex/webstudio
-// use); CHAT_DEFAULT_PX only backstops an unmeasurable container.
-// ----------------------------------------------------------------------
-
-export function chatHeightKey(appId) {
-  return `editor:${appId}:chat-height:v${CHAT_HEIGHT_VERSION}`
-}
-
-export function readChatHeight(appId) {
-  if (typeof localStorage === 'undefined') return null
-  const raw = Number(localStorage.getItem(chatHeightKey(appId)))
-  if (!Number.isFinite(raw) || raw <= 0) return null
-  return Math.max(CHAT_MIN_PX, raw)
 }
