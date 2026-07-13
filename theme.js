@@ -190,6 +190,13 @@ export const CSS = `
 .ex-detail { flex: 1; min-width: 0; min-height: 0; display: none; }
 .ex-list-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
+/* A tap anywhere on an interactive row selects/opens the WHOLE row — suppress
+   text selection so a tap on the label can't be swallowed by a selection drag
+   (the whole row, icon + name + metadata, is one target, not just the text). */
+.ex-row, .ex-shortcut, .ex-cell, .ex-tab-btn, .ex-crumb, .ex-menu-item, .ex-shortcut-label, .ex-shortcut-hint, .ex-row-name, .ex-row-meta {
+  -webkit-user-select: none; user-select: none;
+}
+
 /* ---- Detail list rows ---- */
 .ex-list { padding: 4px 6px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px)); }
 .ex-row-wrap { display: flex; align-items: stretch; border-radius: 10px; }
@@ -438,14 +445,17 @@ export const CSS = `
 .ed-cm-host { flex: 1; min-height: 0; overflow: hidden; }
 @media (pointer: coarse) { .ed-cm-host .cm-content { font-size: 16px; } }
 .ed-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); display: block; margin: 0 auto; }
-/* Inline media previews (image/audio/video/pdf). PDF fills the whole pane; the
-   ex-view-scroll padding is dropped for it so the embed uses the full height. */
+/* Inline media previews (image/audio/video/pdf). */
 .ex-preview { min-height: 0; }
-.ex-preview--pdf { padding: 0; display: flex; }
 .ex-media-video { max-width: 100%; max-height: 100%; width: 100%; border-radius: 10px; background: #000; display: block; }
 .ex-media-audio { width: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 8px; }
 .ex-media-audio audio { width: 100%; max-width: 520px; }
-.ex-media-pdf { flex: 1; width: 100%; height: 100%; min-height: 60vh; border: 0; background: var(--surface2, var(--bg)); }
+/* PDF via pdf.js — pages stacked as canvases, centered, scrolling in the pane. */
+.ex-pdf { width: 100%; }
+.ex-pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.ex-pdf-page { max-width: 100%; height: auto; border-radius: 4px; box-shadow: 0 1px 6px rgba(0,0,0,0.35); background: #fff; }
+/* Fallback embed if pdf.js can't render (e.g. sandbox blocks it). */
+.ex-media-pdf { width: 100%; min-height: 70vh; border: 0; background: var(--surface2, var(--bg)); }
 .ed-note { padding: 16px; color: var(--muted); font-size: 13px; }
 
 /* ---- Reused: GitPanel (git banner) ---- */

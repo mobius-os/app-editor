@@ -24,6 +24,9 @@ export function FileViewer({
   const name = baseName(path)
   const readOnly = !canSave
   // A binary the viewer can render inline (image/audio/video/pdf), else null.
+  // Only binaries preview: the server serves a text-decodable file as text/plain,
+  // so a blob of one wouldn't carry the media content-type an <object>/<video>
+  // needs — a text-decodable SVG therefore stays editable source, as before.
   const previewable = meta && meta.is_binary ? mediaKind(path, meta.mime_type || '') : null
 
   function body() {

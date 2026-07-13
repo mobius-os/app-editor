@@ -57,7 +57,8 @@
       "@codemirror/language",
       "@codemirror/lang-markdown",
       "@lezer/highlight",
-      "katex"
+      "katex",
+      "pdfjs-dist"
     ],
     "esm_deps": []
   }
