@@ -1,9 +1,9 @@
 import { Icon } from './Icons.jsx'
 import { CodeEditor } from './CodeEditor.jsx'
-import { ImagePreview } from './ImagePreview.jsx'
+import { Preview } from './Preview.jsx'
 import { ChatBubbleIcon } from './ChatBubbleIcon.jsx'
 import {
-  baseName, formatBytes, isMarkdownPath, isImagePath,
+  baseName, formatBytes, isMarkdownPath, mediaKind,
 } from '../paths.js'
 
 // ----------------------------------------------------------------------
@@ -23,9 +23,8 @@ export function FileViewer({
 }) {
   const name = baseName(path)
   const readOnly = !canSave
-  const isImage = meta && (meta.is_binary
-    ? (isImagePath(path) || (meta.mime_type || '').startsWith('image/'))
-    : false)
+  // A binary the viewer can render inline (image/audio/video/pdf), else null.
+  const previewable = meta && meta.is_binary ? mediaKind(path, meta.mime_type || '') : null
 
   function body() {
     if (fileLoading && !meta) {
@@ -41,8 +40,12 @@ export function FileViewer({
       return <div className="ex-view-note is-error">{msg}</div>
     }
     if (meta && meta.is_binary) {
-      if (isImage) {
-        return <div className="ex-view-scroll"><ImagePreview path={path} reloadKey={fileReloadKey} /></div>
+      if (previewable) {
+        return (
+          <div className={`ex-view-scroll ex-preview ex-preview--${previewable}`}>
+            <Preview path={path} mime={meta.mime_type} size={meta.size} reloadKey={fileReloadKey} />
+          </div>
+        )
       }
       return (
         <div className="ex-view-note">

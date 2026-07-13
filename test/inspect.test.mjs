@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   relativeTime, formatDateAbs, isRecent, pathSegments, parentDir,
-  kindLabel, sortEntries, pushRecent,
+  kindLabel, sortEntries, pushRecent, fileKind, entryIcon, mediaKind,
 } from '../paths.js'
 
 // A fixed "now" so the relative-time cases are deterministic.
@@ -90,6 +90,41 @@ test('sortEntries can interleave folders and files when foldersFirst is off', ()
     sortEntries(entries, { key: 'name', dir: 'asc', foldersFirst: false }).map((e) => e.name),
     ['a', 'b', 'c'],
   )
+})
+
+test('fileKind maps extensions to categories', () => {
+  assert.equal(fileKind('a.js'), 'code')
+  assert.equal(fileKind('a.py'), 'code')
+  assert.equal(fileKind('a.json'), 'data')
+  assert.equal(fileKind('a.css'), 'style')
+  assert.equal(fileKind('a.md'), 'markdown')
+  assert.equal(fileKind('a.png'), 'image')
+  assert.equal(fileKind('a.mp3'), 'audio')
+  assert.equal(fileKind('a.mp4'), 'video')
+  assert.equal(fileKind('a.pdf'), 'pdf')
+  assert.equal(fileKind('a.zip'), 'archive')
+  assert.equal(fileKind('a.sqlite'), 'db')
+  assert.equal(fileKind('a.csv'), 'csv')
+  assert.equal(fileKind('Makefile'), 'generic')
+})
+
+test('entryIcon returns an Icon name + tone for dirs and files', () => {
+  assert.deepEqual(entryIcon({ type: 'directory', name: 'apps' }), { name: 'folder', tone: 'accent', kind: 'dir' })
+  const f = entryIcon({ type: 'file', name: 'x.mp4' })
+  assert.equal(f.name, 'film')
+  assert.equal(f.tone, 'blue')
+})
+
+test('mediaKind classifies previewable binaries by ext then mime', () => {
+  assert.equal(mediaKind('a.png'), 'image')
+  assert.equal(mediaKind('a.mp3'), 'audio')
+  assert.equal(mediaKind('a.mp4'), 'video')
+  assert.equal(mediaKind('a.pdf'), 'pdf')
+  assert.equal(mediaKind('a.txt'), null)
+  // extension-less, classified by server mime
+  assert.equal(mediaKind('blob', 'image/png'), 'image')
+  assert.equal(mediaKind('blob', 'application/pdf'), 'pdf')
+  assert.equal(mediaKind('blob', 'text/plain'), null)
 })
 
 test('pushRecent de-dupes, most-recent-first, and caps length', () => {

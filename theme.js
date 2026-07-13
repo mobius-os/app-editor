@@ -205,12 +205,14 @@ export const CSS = `
 .ex-row:active { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
 .ex-row-wrap.is-selected .ex-row-name { color: var(--accent); font-weight: 700; }
 .ex-row-icon { flex: 0 0 auto; width: 26px; display: flex; align-items: center; justify-content: center; }
-.ex-glyph-dir { color: var(--accent); }
-.ex-glyph-file {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px;
-  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--muted);
-}
-.ex-glyph-file--lg { font-size: 15px; min-width: 30px; height: 30px; }
+/* File/folder type icons. Shape carries the type; a restrained tone carries
+   the category ("hue for meaning"): folders + code in accent, media in blue,
+   pdf/archive in amber, everything else calm muted. */
+.ex-glyph { flex: 0 0 auto; }
+.ex-glyph--accent { color: var(--accent); }
+.ex-glyph--blue { color: var(--ed-blue); }
+.ex-glyph--amber { color: var(--ed-amber); }
+.ex-glyph--muted { color: var(--muted); }
 .ex-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ex-row-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .ex-row-name { min-width: 0; font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -436,6 +438,14 @@ export const CSS = `
 .ed-cm-host { flex: 1; min-height: 0; overflow: hidden; }
 @media (pointer: coarse) { .ed-cm-host .cm-content { font-size: 16px; } }
 .ed-img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--border); display: block; margin: 0 auto; }
+/* Inline media previews (image/audio/video/pdf). PDF fills the whole pane; the
+   ex-view-scroll padding is dropped for it so the embed uses the full height. */
+.ex-preview { min-height: 0; }
+.ex-preview--pdf { padding: 0; display: flex; }
+.ex-media-video { max-width: 100%; max-height: 100%; width: 100%; border-radius: 10px; background: #000; display: block; }
+.ex-media-audio { width: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 8px; }
+.ex-media-audio audio { width: 100%; max-width: 520px; }
+.ex-media-pdf { flex: 1; width: 100%; height: 100%; min-height: 60vh; border: 0; background: var(--surface2, var(--bg)); }
 .ed-note { padding: 16px; color: var(--muted); font-size: 13px; }
 
 /* ---- Reused: GitPanel (git banner) ---- */

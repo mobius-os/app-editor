@@ -3,6 +3,10 @@ export const FS = '/api/fs'
 
 export const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdown', 'mkd'])
 export const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'])
+// Media the viewer can preview inline via a blob object URL (small files only —
+// the /api/fs read cap is 5 MB, so a bigger media file shows the size notice).
+export const AUDIO_EXTS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus'])
+export const VIDEO_EXTS = new Set(['mp4', 'webm', 'ogv', 'mov', 'm4v'])
 
 export const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'

@@ -9,7 +9,7 @@
 // Paths are FS-root-relative, '/'-joined, no leading slash.
 // ----------------------------------------------------------------------
 import {
-  MARKDOWN_EXTS, IMAGE_EXTS, RECENT_MS, RECENTS_MAX,
+  MARKDOWN_EXTS, IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, RECENT_MS, RECENTS_MAX,
   SORT_NAME, SORT_SIZE, SORT_MODIFIED, SORT_KIND,
 } from './constants.js'
 
@@ -36,6 +36,74 @@ export function isMarkdownPath(path) {
 
 export function isImagePath(path) {
   return IMAGE_EXTS.has(extOf(baseName(path)))
+}
+
+// ----------------------------------------------------------------------
+// File-type icons. A file's extension maps to a KIND (a category), and each
+// kind maps to an <Icon name> (a real glyph, replacing the old mono text token)
+// and a TONE (a color class). Hue stays restrained per the design principle
+// "hue for meaning": folders + code read in accent, media in blue, bundles
+// (pdf/archive) in amber, everything else calm muted. Directories are handled
+// by the caller (always the folder icon in accent).
+// ----------------------------------------------------------------------
+const KIND_BY_EXT = {
+  js: 'code', jsx: 'code', ts: 'code', tsx: 'code', mjs: 'code', cjs: 'code',
+  py: 'code', rb: 'code', go: 'code', rs: 'code', java: 'code', kt: 'code',
+  c: 'code', h: 'code', cc: 'code', cpp: 'code', hpp: 'code', cs: 'code',
+  php: 'code', swift: 'code', lua: 'code', pl: 'code', r: 'code', sh: 'code',
+  bash: 'code', zsh: 'code', fish: 'code', ps1: 'code', vue: 'code', svelte: 'code',
+  html: 'markup', htm: 'markup', xml: 'markup',
+  css: 'style', scss: 'style', sass: 'style', less: 'style',
+  json: 'data', yaml: 'data', yml: 'data', toml: 'data', ini: 'data',
+  conf: 'data', cfg: 'data', env: 'data', properties: 'data', lock: 'data',
+  md: 'markdown', markdown: 'markdown', mdown: 'markdown', mkd: 'markdown',
+  txt: 'text', text: 'text', log: 'text', rtf: 'text',
+  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image',
+  svg: 'image', bmp: 'image', ico: 'image', avif: 'image',
+  mp3: 'audio', wav: 'audio', ogg: 'audio', oga: 'audio', m4a: 'audio',
+  aac: 'audio', flac: 'audio', opus: 'audio',
+  mp4: 'video', webm: 'video', ogv: 'video', mov: 'video', m4v: 'video', mkv: 'video', avi: 'video',
+  pdf: 'pdf',
+  zip: 'archive', gz: 'archive', tgz: 'archive', tar: 'archive', bz2: 'archive',
+  xz: 'archive', '7z': 'archive', rar: 'archive', jar: 'archive',
+  db: 'db', sqlite: 'db', sqlite3: 'db',
+  csv: 'csv', tsv: 'csv',
+}
+export function fileKind(name) {
+  return KIND_BY_EXT[extOf(name)] || 'generic'
+}
+
+// KIND → <Icon name>. Directories map to the folder icon (via the 'dir' key).
+export const KIND_ICON = {
+  dir: 'folder', code: 'code', markup: 'code', style: 'hash', data: 'braces',
+  markdown: 'fileText', text: 'fileText', image: 'image', audio: 'music',
+  video: 'film', pdf: 'document', archive: 'archive', db: 'database',
+  csv: 'table', generic: 'file',
+}
+// KIND → tone class suffix (see `.ex-glyph--*` in theme.js).
+export const KIND_TONE = {
+  dir: 'accent', code: 'accent', markup: 'accent', style: 'muted', data: 'muted',
+  markdown: 'muted', text: 'muted', image: 'blue', audio: 'blue', video: 'blue',
+  pdf: 'amber', archive: 'amber', db: 'muted', csv: 'muted', generic: 'muted',
+}
+
+// The Icon name + tone class for an entry (folder or file), for the row/grid.
+export function entryIcon(entry) {
+  const kind = entry.type === 'directory' ? 'dir' : fileKind(entry.name)
+  return { name: KIND_ICON[kind], tone: KIND_TONE[kind], kind }
+}
+
+// What the viewer can preview inline for a BINARY file → 'image'|'audio'|
+// 'video'|'pdf'|null. Small files only (the read cap is 5 MB). Prefers the
+// extension, falls back to the server MIME so an extension-less file still
+// previews when its type is known.
+export function mediaKind(name, mime = '') {
+  const e = extOf(name)
+  if (IMAGE_EXTS.has(e) || mime.startsWith('image/')) return 'image'
+  if (AUDIO_EXTS.has(e) || mime.startsWith('audio/')) return 'audio'
+  if (VIDEO_EXTS.has(e) || mime.startsWith('video/')) return 'video'
+  if (e === 'pdf' || mime === 'application/pdf') return 'pdf'
+  return null
 }
 
 // A short glyph per file kind for the row/grid. Single chars keep the rows
@@ -236,6 +304,21 @@ export function sortEntries(entries, { key = SORT_NAME, dir = 'asc', foldersFirs
     return sign * keyCmp(a, b, key)
   })
   return rows
+}
+
+// Normalize a /api/fs/disk payload into what the gauge should SHOW. Fullness is
+// used / (used + free), NOT used / total: statvfs `total` counts root-reserved
+// blocks the owner can't actually write, so used/total under-reports fullness
+// (a disk `df` calls 93% full reads as 88%). Dividing by the usable capacity
+// (used + free) matches `df`'s Use% and the "how full can I fill it" mental
+// model. `cap` is that usable capacity; `free` stays the real available bytes.
+export function diskUsage(disk) {
+  if (!disk) return null
+  const used = disk.used || 0
+  const free = disk.free || 0
+  const cap = used + free
+  const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0
+  return { used, free, cap, pct }
 }
 
 // Push a dir path to the front of the recents list, de-duped and capped. Pure

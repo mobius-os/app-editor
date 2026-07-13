@@ -1,4 +1,4 @@
-import { formatBytes } from '../paths.js'
+import { formatBytes, diskUsage } from '../paths.js'
 
 // ----------------------------------------------------------------------
 // Persistent bottom status bar — the directory census + a disk gauge. The
@@ -21,17 +21,17 @@ export function StatusBar({ census, disk, filterActive }) {
   if (protectedCount > 0) parts.push(`${protectedCount} protected`)
   if (capped) parts.push('showing first 10000')
 
-  const diskPct = disk && disk.total ? Math.min(100, Math.round((disk.used / disk.total) * 100)) : null
+  const d = diskUsage(disk)
 
   return (
     <footer className="ex-status">
       <span className="ex-status-census">{parts.join(' · ')}</span>
-      {disk && diskPct != null && (
-        <span className="ex-status-disk" title={`/data filesystem — ${formatBytes(disk.used)} used of ${formatBytes(disk.total)} (${formatBytes(disk.free)} free)`}>
+      {d && (
+        <span className="ex-status-disk" title={`/data filesystem — ${formatBytes(d.used)} used, ${formatBytes(d.free)} free of ${formatBytes(d.cap)} usable`}>
           <span className="ex-disk-track" aria-hidden="true">
-            <span className={`ex-disk-fill${diskPct >= 90 ? ' is-full' : ''}`} style={{ width: `${diskPct}%` }} />
+            <span className={`ex-disk-fill${d.pct >= 90 ? ' is-full' : ''}`} style={{ width: `${d.pct}%` }} />
           </span>
-          <span className="ex-disk-label">{formatBytes(disk.used)} / {formatBytes(disk.total)}</span>
+          <span className="ex-disk-label">{formatBytes(d.used)} / {formatBytes(d.cap)}</span>
         </span>
       )}
     </footer>

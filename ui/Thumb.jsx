@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icons.jsx'
-import { fileGlyph, formatBytes } from '../paths.js'
+import { entryIcon, formatBytes } from '../paths.js'
 import { fsReadBlob } from '../storage.js'
 import { THUMB_MAX_BYTES } from '../constants.js'
 import { isThumbable } from './EntryRow.jsx'
@@ -76,6 +76,7 @@ function Thumb({ path, reloadKey }) {
 
 export function GridCell({ entry, selected, onOpen, onProps, now, reloadKey }) {
   const isDir = entry.type === 'directory'
+  const ic = entryIcon(entry)
   const showThumb = isThumbable(entry) && (entry.size || 0) <= THUMB_MAX_BYTES
   return (
     <div className={`ex-cell-wrap${selected ? ' is-selected' : ''}`}>
@@ -87,11 +88,9 @@ export function GridCell({ entry, selected, onOpen, onProps, now, reloadKey }) {
         title={`/data/${entry.path}`}
       >
         <span className="ex-cell-art" aria-hidden="true">
-          {isDir
-            ? <Icon name="folder" size={30} className="ex-glyph-dir" />
-            : showThumb
-              ? <Thumb path={entry.path} reloadKey={reloadKey} />
-              : <span className="ex-glyph-file ex-glyph-file--lg">{fileGlyph(entry.name)}</span>}
+          {showThumb
+            ? <Thumb path={entry.path} reloadKey={reloadKey} />
+            : <Icon name={ic.name} size={30} className={`ex-glyph ex-glyph--${ic.tone}`} />}
         </span>
         <span className="ex-cell-name">{entry.name}</span>
         <span className="ex-cell-meta">

@@ -1,6 +1,6 @@
 import { Icon } from './Icons.jsx'
 import {
-  fileGlyph, formatBytes, relativeTime, isRecent, isImagePath,
+  entryIcon, formatBytes, relativeTime, isRecent, isImagePath,
 } from '../paths.js'
 
 // ----------------------------------------------------------------------
@@ -17,6 +17,7 @@ import {
 // ----------------------------------------------------------------------
 export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) {
   const isDir = entry.type === 'directory'
+  const ic = entryIcon(entry)
   const recent = isRecent(entry.modified_at, now)
   const rel = relativeTime(entry.modified_at, now)
 
@@ -42,9 +43,7 @@ export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) 
         title={`/data/${entry.path}`}
       >
         <span className="ex-row-icon" aria-hidden="true">
-          {isDir
-            ? <Icon name="folder" size={20} className="ex-glyph-dir" />
-            : <span className="ex-glyph-file">{fileGlyph(entry.name)}</span>}
+          <Icon name={ic.name} size={20} className={`ex-glyph ex-glyph--${ic.tone}`} />
         </span>
         <span className="ex-row-body">
           <span className="ex-row-name-line">

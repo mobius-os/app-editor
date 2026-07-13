@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Icon } from './Icons.jsx'
 import { useModalFocus } from './useModalFocus.js'
 import {
-  formatBytes, formatDateAbs, relativeTime, kindLabel, fileGlyph,
+  formatBytes, formatDateAbs, relativeTime, kindLabel, entryIcon,
 } from '../paths.js'
 
 // ----------------------------------------------------------------------
@@ -67,7 +67,7 @@ export function PropertiesSheet({
       >
         <div className="ex-sheet-head">
           <span className="ex-sheet-icon" aria-hidden="true">
-            {isDir ? <Icon name="folder" size={22} className="ex-glyph-dir" /> : <span className="ex-glyph-file ex-glyph-file--lg">{fileGlyph(entry.name)}</span>}
+            <Icon name={entryIcon(entry).name} size={22} className={`ex-glyph ex-glyph--${entryIcon(entry).tone}`} />
           </span>
           <span className="ex-sheet-name" title={entry.name}>{entry.name}</span>
           <button type="button" className="ex-sheet-x" ref={closeRef} onClick={onClose} aria-label="Close properties"><Icon name="x" size={18} /></button>

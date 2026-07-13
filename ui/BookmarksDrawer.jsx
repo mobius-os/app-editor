@@ -1,5 +1,5 @@
 import { Icon } from './Icons.jsx'
-import { formatBytes, baseName } from '../paths.js'
+import { formatBytes, baseName, diskUsage } from '../paths.js'
 
 // ----------------------------------------------------------------------
 // The drawer CONTENT — the Möbius-meaningful replacement for MiXplorer's
@@ -14,7 +14,7 @@ export function BookmarksDrawer({
   shortcuts, bookmarks, recents, currentPath,
   onNavigate, onUnpin, onPinCurrent, canPinCurrent, disk,
 }) {
-  const diskPct = disk && disk.total ? Math.min(100, Math.round((disk.used / disk.total) * 100)) : null
+  const d = diskUsage(disk)
 
   return (
     <div className="ex-drawer-content ex-scroll">
@@ -23,15 +23,15 @@ export function BookmarksDrawer({
         <span className="ex-drawer-sub">/data</span>
       </div>
 
-      {disk && diskPct != null && (
+      {d && (
         <div className="ex-drawer-disk" title="The host filesystem backing /data (not a Möbius quota)">
           <div className="ex-drawer-disk-top">
             <Icon name="disk" size={15} />
-            <span>{formatBytes(disk.used)} used</span>
-            <span className="ex-drawer-disk-free">{formatBytes(disk.free)} free</span>
+            <span>{formatBytes(d.used)} used</span>
+            <span className="ex-drawer-disk-free">{formatBytes(d.free)} free</span>
           </div>
           <span className="ex-disk-track" aria-hidden="true">
-            <span className={`ex-disk-fill${diskPct >= 90 ? ' is-full' : ''}`} style={{ width: `${diskPct}%` }} />
+            <span className={`ex-disk-fill${d.pct >= 90 ? ' is-full' : ''}`} style={{ width: `${d.pct}%` }} />
           </span>
         </div>
       )}
