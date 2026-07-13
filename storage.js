@@ -170,6 +170,20 @@ export async function fsDisk() {
   }
 }
 
+// Recursive disk usage of a directory subtree (MiXplorer's "Recursive data") →
+// { path, bytes, files, dirs, truncated }. The server walks the subtree under
+// bounded caps (wall-clock + entry count + symlink-skip + deny-prune), so
+// `truncated` marks a lower-bound total. Returns null when the endpoint isn't
+// deployed (404) — the Properties sheet then just omits the recursive line.
+export async function fsDu(path) {
+  try {
+    return await fsJSON(`/du?path=${encodeURIComponent(path || '')}`)
+  } catch (e) {
+    if (e && e.status === 404) return null  // endpoint not deployed yet
+    throw e
+  }
+}
+
 // ----------------------------------------------------------------------
 // Online/offline. /api/fs/* needs the network — there is no offline mirror —
 // so prefer the shell's probed reachability verdict when available. The browser

@@ -119,6 +119,40 @@ export const CSS = `
 .ex-crumb-home-text { font-size: 13px; }
 .ex-crumb-sep { flex: 0 0 auto; color: color-mix(in srgb, var(--muted) 60%, transparent); }
 
+/* ---- Folder tabs ---- */
+.ex-tabs {
+  flex: 0 0 auto; display: flex; align-items: stretch; gap: 4px;
+  padding: 5px 8px; background: var(--surface); border-bottom: 1px solid var(--border);
+  overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch;
+}
+.ex-tab {
+  flex: 0 0 auto; display: inline-flex; align-items: stretch; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface2, var(--bg)); overflow: hidden;
+  max-width: 190px;
+}
+.ex-tab.is-active { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ex-tab-btn {
+  flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; padding: 4px 4px 4px 10px; border: 0; background: transparent;
+  color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.ex-tab.is-active .ex-tab-btn { color: var(--accent); }
+.ex-tab-icon { flex: 0 0 auto; opacity: 0.9; }
+.ex-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-tab-close {
+  flex: 0 0 auto; width: 30px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--muted); cursor: pointer; opacity: 0.7;
+}
+@media (hover: hover) { .ex-tab-close:hover { opacity: 1; color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); } }
+.ex-tab-new {
+  flex: 0 0 auto; width: 34px; min-height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border); border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) { .ex-tab-new:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); } }
+.ex-tab-new:active { transform: scale(0.94); }
+
 /* ---- Filter row ---- */
 .ex-filter-row {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
@@ -338,6 +372,8 @@ export const CSS = `
 .ex-prop-key { flex: 0 0 84px; font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 1px; }
 .ex-prop-val { flex: 1; min-width: 0; font-size: 13px; color: var(--text); word-break: break-word; }
 .ex-prop-val.is-mono { font-family: var(--mono); font-size: 12px; }
+.ex-prop-note { color: var(--muted); font-size: 11px; }
+.ex-prop-measuring { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 .ex-copy-path { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; background: transparent; border: 0; padding: 0; color: var(--accent); font-family: var(--mono); font-size: 12px; cursor: pointer; text-align: left; }
 .ex-copy-path-text { min-width: 0; overflow-wrap: anywhere; }
 .ex-copy-path-icon { flex: 0 0 auto; color: var(--muted); }

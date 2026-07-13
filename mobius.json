@@ -14,6 +14,7 @@
     "domain.js",
     "storage.js",
     "ui/Icons.jsx",
+    "ui/TabStrip.jsx",
     "ui/Breadcrumb.jsx",
     "ui/EntryRow.jsx",
     "ui/Thumb.jsx",

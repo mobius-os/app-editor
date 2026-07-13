@@ -29,7 +29,7 @@ function Row({ label, children, mono }) {
 }
 
 export function PropertiesSheet({
-  entry, detail, dirCount, loading, error,
+  entry, detail, dirCount, du, duLoading, loading, error,
   canDelete, onOpen, onDelete, onAskAgent, onClose,
 }) {
   const closeRef = useRef(null)
@@ -84,6 +84,13 @@ export function PropertiesSheet({
           {isDir
             ? <Row label="Contents">{itemCount != null ? `${itemCount >= 10000 ? '10000+' : itemCount} item${itemCount === 1 ? '' : 's'} (top level)` : (loading ? 'counting…' : '—')}</Row>
             : <Row label="Size">{typeof size === 'number' ? `${formatBytes(size)}  ·  ${size.toLocaleString()} bytes` : '—'}</Row>}
+          {isDir && (duLoading || du) && (
+            <Row label="Recursive">
+              {du
+                ? <span>{formatBytes(du.bytes)}{du.truncated ? '+' : ''} · {du.files.toLocaleString()} file{du.files === 1 ? '' : 's'}, {du.dirs.toLocaleString()} folder{du.dirs === 1 ? '' : 's'}{du.truncated ? <span className="ex-prop-note"> (partial — huge tree)</span> : ''}</span>
+                : <span className="ex-prop-measuring"><span className="ex-spinner" aria-hidden="true" /> measuring subtree…</span>}
+            </Row>
+          )}
           {!isDir && <Row label="MIME" mono>{mime || 'unknown'}</Row>}
           <Row label="Modified">{modified ? `${formatDateAbs(modified)}  ·  ${relativeTime(modified)}` : '—'}</Row>
           {!isDir && detail && <Row label="Content">{detail.is_binary ? 'Binary' : 'Text'}</Row>}

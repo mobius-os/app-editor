@@ -28,11 +28,11 @@ import {
 } from 'react'
 import {
   DESKTOP_BREAKPOINT, LISTING_PAGE_CAP, LISTING_ENTRY_CAP,
-  SHORTCUTS, DEFAULT_PREFS, VIEW_LIST, VIEW_GRID, SORT_KEYS,
+  SHORTCUTS, DEFAULT_PREFS, VIEW_LIST, VIEW_GRID, TABS_MAX,
 } from './constants.js'
 import { CSS } from './theme.js'
 import {
-  fsDelete, fsGit, fsMeta, fsReadText, fsReadHead, fsTree, fsWrite, fsDisk,
+  fsDelete, fsGit, fsMeta, fsReadText, fsReadHead, fsTree, fsWrite, fsDisk, fsDu,
   loadPrefs, savePrefs, emitSignal, useOnline,
 } from './storage.js'
 import {
@@ -41,6 +41,7 @@ import {
   sortEntries, pushRecent,
 } from './paths.js'
 import { Icon } from './ui/Icons.jsx'
+import { TabStrip } from './ui/TabStrip.jsx'
 import { Breadcrumb } from './ui/Breadcrumb.jsx'
 import { EntryRow } from './ui/EntryRow.jsx'
 import { GridCell } from './ui/Thumb.jsx'
@@ -101,7 +102,17 @@ export default function App({ appId }) {
   const appReadyRef = useRef(false)
 
   // --- Current location (drill-in) ---
-  const [cwd, setCwd] = useState('')
+  // Folder tabs — each is an independent location; the ACTIVE tab's path is the
+  // current directory (cwd). Navigation mutates the active tab; switching tabs
+  // is the no-dual-pane way to compare or hop between two folders.
+  const tabSeqRef = useRef(1)
+  const newTabId = () => `t${tabSeqRef.current++}`
+  const [tabs, setTabs] = useState(() => [{ id: 't0', path: '' }])
+  const [activeTabId, setActiveTabId] = useState('t0')
+  const activeTabIdRef = useRef('t0')
+  useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
+  const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
+  const cwd = activeTab ? activeTab.path : ''
   const cwdRef = useRef('')
   useEffect(() => { cwdRef.current = cwd }, [cwd])
 
@@ -157,8 +168,11 @@ export default function App({ appId }) {
   const [propsTarget, setPropsTarget] = useState(null)
   const [propsDetail, setPropsDetail] = useState(null)
   const [propsDirCount, setPropsDirCount] = useState(null)
+  const [propsDu, setPropsDu] = useState(null)          // recursive {bytes,files,dirs,truncated}
+  const [propsDuLoading, setPropsDuLoading] = useState(false)
   const [propsLoading, setPropsLoading] = useState(false)
   const [propsError, setPropsError] = useState(null)
+  const propsPathRef = useRef(null)                     // guards async du against a changed target
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMounted, setChatMounted] = useState(false)
   const chatOpenRef = useRef(false)
@@ -301,7 +315,7 @@ export default function App({ appId }) {
     setFilter('')
     setFilterOpen(false)
     setOverflowOpen(false)
-    setCwd(path)
+    setTabs((prev) => prev.map((t) => (t.id === activeTabIdRef.current ? { ...t, path } : t)))
     if (!childrenByDir[path]) loadDir(path, { showLoading: true })
     loadGit(path)
     if (prefsLoadedRef.current) {
@@ -328,16 +342,78 @@ export default function App({ appId }) {
     if (cwdRef.current) navigateTo(parentDir(cwdRef.current))
   }, [navigateTo])
 
+  // Load a tab's directory + git when it becomes active (cached listings make
+  // switching instant). Shared by switch/new/close.
+  const activateTabAt = useCallback((path) => {
+    setFilter('')
+    setFilterOpen(false)
+    setGitOpen(false)
+    setOverflowOpen(false)
+    if (!childrenByDir[path]) loadDir(path, { showLoading: true })
+    loadGit(path)
+  }, [childrenByDir, loadDir, loadGit])
+
+  const switchTab = useCallback((id) => {
+    if (id === activeTabIdRef.current) return
+    const t = tabs.find((x) => x.id === id)
+    setActiveTabId(id)
+    if (t) activateTabAt(t.path)
+  }, [tabs, activateTabAt])
+
+  const newTab = useCallback(() => {
+    if (tabs.length >= TABS_MAX) return
+    const id = newTabId()
+    const path = cwdRef.current   // open the new tab at the current folder
+    setTabs((prev) => [...prev, { id, path }])
+    setActiveTabId(id)
+    setOverflowOpen(false)
+    activateTabAt(path)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs.length, activateTabAt])
+
+  const closeTab = useCallback((id) => {
+    if (tabs.length <= 1) return
+    const idx = tabs.findIndex((t) => t.id === id)
+    const next = tabs.filter((t) => t.id !== id)
+    setTabs(next)
+    if (id === activeTabIdRef.current) {
+      const na = next[Math.min(idx, next.length - 1)]
+      setActiveTabId(na.id)
+      activateTabAt(na.path)
+    }
+  }, [tabs, activateTabAt])
+
+  // Persist the open tabs + active index (after the initial restore) so a
+  // reopen lands on the same set of folder tabs.
+  useEffect(() => {
+    if (!prefsLoadedRef.current) return
+    const openTabs = tabs.map((t) => t.path)
+    const activeTabIndex = Math.max(0, tabs.findIndex((t) => t.id === activeTabId))
+    setPrefs((p) => {
+      const nextP = { ...p, openTabs, activeTabIndex }
+      savePrefs(nextP)
+      return nextP
+    })
+  }, [tabs, activeTabId])
+
   // --- Initial load + prefs restore ---
   useEffect(() => {
     loadDir('', { showLoading: true })
     fsDisk().then((d) => setDisk(d)).catch(() => setDisk(null))
     loadPrefs().then((p) => {
-      prefsLoadedRef.current = true
       setPrefs(p)
-      const start = typeof p.lastPath === 'string' ? p.lastPath : ''
-      if (start) navigateTo(start)
-      else loadGit('')
+      // Restore the open tabs (fresh ids), falling back to a single Home tab.
+      const paths = Array.isArray(p.openTabs) && p.openTabs.length
+        ? p.openTabs.map((x) => String(x || '').replace(/^\/+|\/+$/g, ''))
+        : ['']
+      const restored = paths.map((path) => ({ id: newTabId(), path }))
+      const idx = Math.min(Math.max(0, (p.activeTabIndex | 0)), restored.length - 1)
+      setTabs(restored)
+      setActiveTabId(restored[idx].id)
+      prefsLoadedRef.current = true
+      const start = restored[idx].path
+      if (start && !childrenByDir[start]) loadDir(start, { showLoading: true })
+      loadGit(start)
     }).catch(() => { prefsLoadedRef.current = true; loadGit('') })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -687,7 +763,9 @@ export default function App({ appId }) {
   // child count if the listing didn't already carry it.
   // ----------------------------------------------------------------------
   const openProps = useCallback(async (entry) => {
-    setPropsDetail(null); setPropsDirCount(null); setPropsError(null); setPropsLoading(true)
+    setPropsDetail(null); setPropsDirCount(null); setPropsDu(null); setPropsError(null)
+    setPropsLoading(true); setPropsDuLoading(false)
+    propsPathRef.current = entry.path
     const ready = await openBackSurface('editor-props', propsHandleRef, () => setPropsTarget(null))
     if (!ready) { setPropsLoading(false); return }
     setPropsTarget(entry)
@@ -696,21 +774,33 @@ export default function App({ appId }) {
       if (entry.type === 'directory') {
         if (typeof entry.child_count !== 'number') {
           const { entries } = await fetchDir(entry.path)
-          setPropsDirCount(entries.filter((e) => !isKeepMarker(e.name)).length)
+          if (propsPathRef.current === entry.path) setPropsDirCount(entries.filter((e) => !isKeepMarker(e.name)).length)
         }
+        // Recursive data (MiXplorer-style): a bounded du of the whole subtree,
+        // in the background so the sheet opens instantly. Feature-detected —
+        // absent endpoint (null) just leaves the recursive line off. Guarded by
+        // propsPathRef so a slow result can't apply to a different target.
+        setPropsDuLoading(true)
+        fsDu(entry.path)
+          .then((du) => { if (propsPathRef.current === entry.path) setPropsDu(du) })
+          .catch(() => {})
+          .finally(() => { if (propsPathRef.current === entry.path) setPropsDuLoading(false) })
       } else {
-        setPropsDetail(await fsMeta(entry.path))
+        const m = await fsMeta(entry.path)
+        if (propsPathRef.current === entry.path) setPropsDetail(m)
       }
     } catch (e) {
-      setPropsError(e.message || 'Could not read details.')
+      if (propsPathRef.current === entry.path) setPropsError(e.message || 'Could not read details.')
     } finally {
-      setPropsLoading(false)
+      if (propsPathRef.current === entry.path) setPropsLoading(false)
     }
   }, [openBackSurface, fetchDir])
 
   const closeProps = useCallback(() => {
     closeBackHandle(propsHandleRef)
-    setPropsTarget(null); setPropsDetail(null); setPropsDirCount(null); setPropsError(null)
+    propsPathRef.current = null
+    setPropsTarget(null); setPropsDetail(null); setPropsDirCount(null); setPropsDu(null)
+    setPropsDuLoading(false); setPropsError(null)
   }, [closeBackHandle])
 
   // ----------------------------------------------------------------------
@@ -1072,6 +1162,16 @@ export default function App({ appId }) {
         </header>
       )}
 
+      {showTopBar && (
+        <TabStrip
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSwitch={switchTab}
+          onClose={closeTab}
+          onNew={newTab}
+        />
+      )}
+
       {showTopBar && filterOpen && (
         <div className="ex-filter-row">
           <Icon name="search" size={16} className="ex-filter-icon" />
@@ -1166,6 +1266,8 @@ export default function App({ appId }) {
           entry={propsTarget}
           detail={propsDetail}
           dirCount={propsDirCount}
+          du={propsDu}
+          duLoading={propsDuLoading}
           loading={propsLoading}
           error={propsError}
           canDelete={propsTarget.type !== 'directory' && propsDetail && propsDetail.writable}

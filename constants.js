@@ -66,7 +66,11 @@ export const DEFAULT_PREFS = {
   bookmarks: [],        // owner-pinned extra dir paths (FS-root-relative strings)
   recents: [],          // recently-visited dirs, most-recent first (capped)
   lastPath: '',         // last directory the owner browsed (a dir, not a file)
+  openTabs: [''],       // one dir path per open folder tab (restored on reopen)
+  activeTabIndex: 0,    // which openTabs entry is active
 }
+
+export const TABS_MAX = 8
 
 export const RECENTS_MAX = 12
 
