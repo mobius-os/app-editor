@@ -31,7 +31,7 @@ Without them: no disk gauge, no folder item counts, and a >5 MB file shows the "
 
 ## Owner-JWT trade-off
 
-The Editor drives the owner-only `/api/fs/*` API, which the app-scoped `token` prop cannot reach (it 401s). The app reads the owner JWT from `localStorage('token')` and sends it as the bearer for every `/api/fs/*` call. This is the accepted single-owner trade-off: the gated surface is the whole filesystem regardless, so a scoped permission would be theatre. The JWT is read fresh on every call so a re-login in another tab is picked up without reloading the app.
+The Editor declares `permissions.filesystem_access: true`. The shell passes its short-lived app-scoped token into the frame, and the backend checks the Editor's live permission row on every `/api/fs/*` request. Removing the grant takes effect immediately; the owner's login token is never exposed to the app.
 
 ## Install
 

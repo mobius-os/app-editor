@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react'
 import { FS, PREFS_PATH, DEFAULT_PREFS } from './constants.js'
 
-// The owner JWT — written by the shell at login. /api/fs/* is owner-only and
-// the app `token` prop is app-scoped (would 401), so we read the owner token
-// here. Read fresh on every call: a 30-day token can be rotated mid-session by
-// a re-login in another tab, and caching a stale copy would 401 silently.
-export function ownerToken() {
-  try {
-    return (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || ''
-  } catch {
-    return ''
-  }
+// The shell supplies a short-lived token scoped to this app. The Editor's
+// manifest explicitly grants that identity filesystem_access; the backend
+// checks the live app row on every /api/fs request so the grant is immediately
+// revocable without exposing the owner's login token to the frame.
+let _filesystemToken = ''
+
+export function configureFilesystemToken(token) {
+  _filesystemToken = typeof token === 'string' ? token : ''
+}
+
+export function filesystemToken() {
+  return _filesystemToken
+}
+
+function requireFilesystemToken() {
+  const token = filesystemToken()
+  if (!token) throw new FsError('Filesystem access is unavailable. Reopen the Editor and try again.', 401)
+  return token
 }
 
 // Fire-and-forget analytics for Reflection. window.mobius.signal buffers in
@@ -31,8 +39,7 @@ export class FsError extends Error {
 }
 
 export async function fsJSON(pathQuery) {
-  const tok = ownerToken()
-  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const tok = requireFilesystemToken()
   const r = await fetch(`${FS}${pathQuery}`, { headers: { Authorization: `Bearer ${tok}` } })
   if (!r.ok) {
     let detail = `Request failed (${r.status}).`
@@ -64,8 +71,7 @@ export function fsMeta(path) {
 // Read a file's text. Returns the plaintext string; throws FsError on
 // 403/404/413/etc. (the caller has already checked meta for binary/size).
 export async function fsReadText(path) {
-  const tok = ownerToken()
-  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const tok = requireFilesystemToken()
   const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}`, {
     headers: { Authorization: `Bearer ${tok}` },
   })
@@ -85,8 +91,7 @@ export async function fsReadText(path) {
 // caller catches that and shows the "too large — ask the agent" notice, so this
 // is a pure enhancement. Never used for binaries.
 export async function fsReadHead(path) {
-  const tok = ownerToken()
-  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const tok = requireFilesystemToken()
   const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}&head=1`, {
     headers: { Authorization: `Bearer ${tok}` },
   })
@@ -105,8 +110,7 @@ export async function fsReadHead(path) {
 // call site. cache: 'reload' bypasses the HTTP cache so an image the agent
 // regenerated at the same path returns its FRESH bytes.
 export async function fsReadBlob(path) {
-  const tok = ownerToken()
-  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const tok = requireFilesystemToken()
   const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}`, {
     headers: { Authorization: `Bearer ${tok}` },
     cache: 'reload',
@@ -118,8 +122,7 @@ export async function fsReadBlob(path) {
 // Write text to a path under /data. 403 = denied/root-owned/protected;
 // 413 = too big. Body is raw text/plain (the route reads it as a string body).
 export async function fsWrite(path, content) {
-  const tok = ownerToken()
-  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const tok = requireFilesystemToken()
   const r = await fetch(`${FS}/write?path=${encodeURIComponent(path)}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'text/plain' },
@@ -136,8 +139,7 @@ export async function fsWrite(path, content) {
 // Delete a file at `path` under /data. 403 = denied/root-owned/protected;
 // 404 = already gone (the caller treats either as "it's no longer there").
 export async function fsDelete(path) {
-  const tok = ownerToken()
-  if (!tok) throw new FsError('Not signed in as the owner.', 401)
+  const tok = requireFilesystemToken()
   const r = await fetch(`${FS}/delete?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${tok}` },

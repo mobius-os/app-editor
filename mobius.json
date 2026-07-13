@@ -1,7 +1,7 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Browse, inspect, and edit every file on your M\u00f6bius \u2014 a MiXplorer-style file explorer with breadcrumbs, sort, view modes, a properties inspector, git status, and disk usage, plus an agent that can edit for you.",
   "author": "mobius-os",
   "license": "MIT",
@@ -42,7 +42,8 @@
   "embeds_agent": true,
   "permissions": {
     "cross_app_access": "none",
-    "share_with_apps": "none"
+    "share_with_apps": "none",
+    "filesystem_access": true
   },
   "storage_seeds": {
     "chat_id.json": null

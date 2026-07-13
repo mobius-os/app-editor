@@ -8,13 +8,12 @@
 //   theme.js      — the single app stylesheet (CSS)
 //   domain.js     — CodeMirror + markdown-preview + KaTeX engine (no React)
 //   paths.js      — pure path/name/format/sort helpers (dependency-free)
-//   storage.js    — owner FS API helpers, online signal, prefs
+//   storage.js    — scoped FS API helpers, online signal, prefs
 //   ui/*.jsx      — one React component per concern
 //
-// This app is the OWNER's window into the whole /data tree. It drives the
-// OWNER-ONLY /api/fs/* API (routes/fs.py), which the app-scoped `token` prop
-// cannot reach (it 401s), so we read the owner JWT from localStorage('token')
-// — the accepted single-owner trade-off documented in mobius/CLAUDE.md.
+// This app is the owner's window into the guarded /data tree. Its manifest
+// grants the app identity filesystem_access, so /api/fs accepts the short-lived
+// scoped `token` prop without exposing the owner's login token to this frame.
 //
 // Redesign shape (was: tree drawer + editor + resizable chat): a DRILL-IN file
 // browser is the home surface — a tappable breadcrumb, a dense detail list with
@@ -33,7 +32,7 @@ import {
 import { CSS } from './theme.js'
 import {
   fsDelete, fsGit, fsMeta, fsReadText, fsReadHead, fsTree, fsWrite, fsDisk, fsDu,
-  loadPrefs, savePrefs, emitSignal, useOnline,
+  configureFilesystemToken, loadPrefs, savePrefs, emitSignal, useOnline,
 } from './storage.js'
 import {
   baseName, dirName, parentDir, extOf, bufferDirtyAfterSave,
@@ -70,7 +69,11 @@ function buildChangeMap(git) {
   return map
 }
 
-export default function App({ appId }) {
+export default function App({ appId, token }) {
+  // Configure before hooks/effects can schedule any filesystem work. Each app
+  // runs in its own frame realm, so this module-local value cannot leak to a
+  // sibling app.
+  configureFilesystemToken(token)
   const online = useOnline()
 
   // Responsive: phone (stack + drill; file/props/chat push) vs desktop
