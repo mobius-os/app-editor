@@ -190,6 +190,7 @@ export default function App({ appId }) {
   const deletingRef = useRef(false)
   useEffect(() => { deletingRef.current = deleting }, [deleting])
   const [pendingSwitch, setPendingSwitch] = useState(null)
+  const [pendingClose, setPendingClose] = useState(false)
   const [pendingOverwrite, setPendingOverwrite] = useState(false)
 
   // --- Shell back-stack handles ---
@@ -525,10 +526,17 @@ export default function App({ appId }) {
   // can't silently discard edits. The old app had no user-facing close-to-list
   // path, so this guard is new — without it, drilling Back out of an edited file
   // wipes it. Used by both the back-arrow and the phone shell Back surface.
+  // A plain modal (not a nav surface): the file overlay already owns a shell
+  // back-surface on phone, and stacking a second one under it doesn't ack
+  // cleanly. The ConfirmModal handles Escape/Cancel itself; a hardware Back just
+  // re-fires this (idempotent).
   const requestCloseFile = useCallback(() => {
-    if (dirtyRef.current) openSwitchPrompt({ path: null })
+    if (dirtyRef.current) setPendingClose(true)
     else clearOpenFile()
-  }, [openSwitchPrompt, clearOpenFile])
+  }, [clearOpenFile])
+
+  const confirmClose = useCallback(() => { setPendingClose(false); clearOpenFile() }, [clearOpenFile])
+  const cancelClose = useCallback(() => setPendingClose(false), [])
 
   // Open a file for real. On a phone this registers a Back surface so the file
   // is a pushed screen (Back routes through the dirty-close guard); on desktop
@@ -556,8 +564,7 @@ export default function App({ appId }) {
     closeBackHandle(switchHandleRef)
     setPendingSwitch(null)
     if (target && target.path) selectFile(target.path)
-    else if (target) clearOpenFile()   // { path: null } = discard-and-close
-  }, [pendingSwitch, selectFile, clearOpenFile, closeBackHandle])
+  }, [pendingSwitch, selectFile, closeBackHandle])
 
   const cancelSwitch = useCallback(() => {
     closeBackHandle(switchHandleRef)
@@ -1303,10 +1310,19 @@ export default function App({ appId }) {
       {pendingSwitch && (
         <ConfirmModal
           title="Discard unsaved changes?"
-          body={<>You have unsaved edits in <code className="ed-modal-code">{baseName(selectedPath)}</code>. {pendingSwitch.path ? 'Opening another file' : 'Closing this file'} will discard them.</>}
-          confirmLabel={pendingSwitch.path ? 'Discard & open' : 'Discard & close'}
+          body={<>You have unsaved edits in <code className="ed-modal-code">{baseName(selectedPath)}</code>. Opening another file will discard them.</>}
+          confirmLabel="Discard & open"
           onConfirm={confirmSwitch}
           onCancel={cancelSwitch}
+        />
+      )}
+      {pendingClose && (
+        <ConfirmModal
+          title="Discard unsaved changes?"
+          body={<>You have unsaved edits in <code className="ed-modal-code">{baseName(selectedPath)}</code>. Closing this file will discard them.</>}
+          confirmLabel="Discard & close"
+          onConfirm={confirmClose}
+          onCancel={cancelClose}
         />
       )}
       {pendingOverwrite && (
