@@ -310,7 +310,7 @@ export const CSS = `
 .ex-drawer-section-label { padding: 10px 8px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .ex-shortcut-wrap { display: flex; align-items: stretch; border-radius: 10px; }
 .ex-shortcut {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 11px;
+  flex: 1; width: 100%; min-width: 0; display: flex; align-items: center; gap: 11px;
   min-height: 46px; padding: 7px 10px; text-align: left;
   background: transparent; border: 0; border-radius: 10px; color: var(--text);
   cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.12s;
