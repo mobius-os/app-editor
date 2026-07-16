@@ -1113,6 +1113,7 @@ export default function App({ appId, token }) {
   return (
     <div className="ex-root">
       <style>{CSS}</style>
+      <h1 className="ex-sr-only">Editor</h1>
 
       {showTopBar && (
         <header className="ex-appbar">

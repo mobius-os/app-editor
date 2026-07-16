@@ -86,7 +86,7 @@ export const CSS = `
 /* /mobius-ui:Spinner */
 
 .ex-icon-btn {
-  flex: 0 0 auto; width: 40px; height: 40px; padding: 0; border-radius: 9px;
+  flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 9px;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; background: transparent; color: var(--text); cursor: pointer;
   transition: color 0.12s, background 0.12s, transform 0.08s;
@@ -120,7 +120,7 @@ export const CSS = `
 .ex-crumb-group { display: inline-flex; align-items: center; flex: 0 0 auto; }
 .ex-crumb {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px;
-  padding: 6px 8px; border-radius: 8px; border: 0; background: transparent;
+  min-height: 44px; padding: 6px 8px; border-radius: 8px; border: 0; background: transparent;
   color: var(--muted); font-family: var(--font); font-size: 14px; font-weight: 600;
   cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
   transition: background 0.12s, color 0.12s;
@@ -145,7 +145,7 @@ export const CSS = `
 .ex-tab.is-active { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
 .ex-tab-btn {
   flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px;
-  min-height: 34px; padding: 4px 4px 4px 10px; border: 0; background: transparent;
+  min-height: 44px; padding: 4px 4px 4px 10px; border: 0; background: transparent;
   color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
@@ -153,12 +153,12 @@ export const CSS = `
 .ex-tab-icon { flex: 0 0 auto; opacity: 0.9; }
 .ex-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-tab-close {
-  flex: 0 0 auto; width: 30px; display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 44px; display: inline-flex; align-items: center; justify-content: center;
   border: 0; background: transparent; color: var(--muted); cursor: pointer; opacity: 0.7;
 }
 @media (hover: hover) { .ex-tab-close:hover { opacity: 1; color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); } }
 .ex-tab-new {
-  flex: 0 0 auto; width: 34px; min-height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px dashed var(--border); border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -174,6 +174,10 @@ export const CSS = `
 .ex-filter-input {
   flex: 1; min-width: 0; min-height: 32px; border: 0; background: transparent;
   color: var(--text); font-family: var(--font); font-size: 16px; outline: none;
+}
+.ex-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 .ex-filter-clear {
   flex: 0 0 auto; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
