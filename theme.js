@@ -68,8 +68,8 @@ export const CSS = `
 }
 .ed-btn:active, .ex-btn:active { transform: scale(0.97); }
 .ed-btn:disabled, .ex-btn:disabled { opacity: 0.5; cursor: default; transform: none; }
-.ed-btn-primary, .ex-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
-@media (hover: hover) { .ed-btn-primary:hover, .ex-btn-primary:hover { filter: brightness(1.06); } }
+.ed-btn-primary, .ex-btn-primary { background: var(--accent-hover, var(--accent)); border-color: var(--accent-hover, var(--accent)); color: var(--accent-fg); }
+@media (hover: hover) { .ed-btn-primary:hover, .ex-btn-primary:hover { filter: brightness(0.94); } }
 .ex-btn-primary.is-quiet { background: var(--surface2, var(--surface)); border-color: var(--border); color: var(--muted); }
 .ed-btn-danger, .ex-btn-danger { background: var(--danger); border-color: var(--danger); color: var(--accent-fg); }
 @media (hover: hover) { .ed-btn-danger:hover, .ex-btn-danger:hover { filter: brightness(1.06); } }
@@ -149,7 +149,7 @@ export const CSS = `
   color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
-.ex-tab.is-active .ex-tab-btn { color: var(--accent); }
+.ex-tab.is-active .ex-tab-btn { color: var(--text); }
 .ex-tab-icon { flex: 0 0 auto; opacity: 0.9; }
 .ex-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-tab-close {
@@ -334,7 +334,7 @@ export const CSS = `
 @media (hover: hover) { .ex-shortcut:hover { background: var(--surface2, var(--bg)); } }
 .ex-shortcut:active { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
 .ex-shortcut.is-active, .ex-shortcut-wrap.is-active { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
-.ex-shortcut.is-active .ex-shortcut-label { color: var(--accent); }
+.ex-shortcut.is-active .ex-shortcut-label { color: var(--text); }
 .ex-shortcut-icon { flex: 0 0 auto; width: 24px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .ex-shortcut.is-active .ex-shortcut-icon { color: var(--accent); }
 .ex-shortcut-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -476,7 +476,7 @@ export const CSS = `
 
 /* ---- Reused: GitPanel (git banner) ---- */
 .ed-git { flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--surface); }
-.ed-git-bar { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 8px 14px; text-align: left; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); font-size: 12.5px; -webkit-tap-highlight-color: transparent; }
+.ed-git-bar { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 14px; text-align: left; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); font-size: 12.5px; -webkit-tap-highlight-color: transparent; }
 .ed-git-bar.is-quiet { color: var(--muted); cursor: default; min-height: 32px; font-size: 12px; }
 .ed-git-caret { flex: 0 0 auto; width: 16px; font-size: 14px; line-height: 1; color: var(--muted); }
 .ed-git-branch { font-weight: 700; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }

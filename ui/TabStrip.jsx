@@ -29,15 +29,14 @@ export function TabStrip({ tabs, activeTabId, onSwitch, onClose, onNew }) {
   }
 
   return (
-    <div className="ex-tabs ex-scroll-x" role="tablist" aria-label="Open folders">
+    <div className="ex-tabs ex-scroll-x" role="toolbar" aria-label="Open folders">
       {tabs.map((t, index) => {
         const active = t.id === activeTabId
         return (
           <div key={t.id} className={`ex-tab${active ? ' is-active' : ''}`}>
             <button
               type="button"
-              role="tab"
-              aria-selected={active}
+              aria-pressed={active}
               tabIndex={active ? 0 : -1}
               ref={(node) => { tabRefs.current[index] = node }}
               className="ex-tab-btn"

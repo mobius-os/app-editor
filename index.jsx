@@ -1212,6 +1212,7 @@ export default function App({ appId, token }) {
           className={`ex-drawer${navOpen ? ' is-open' : ''}`}
           aria-label="Places"
           aria-hidden={!navOpen && !isDesktop}
+          inert={!navOpen && !isDesktop ? true : undefined}
           onTouchStart={onDrawerTouchStart}
           onTouchMove={onDrawerTouchMove}
           onTouchEnd={onDrawerTouchEnd}
