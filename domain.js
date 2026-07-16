@@ -7,6 +7,9 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { syntaxHighlighting, HighlightStyle, indentOnInput, syntaxTree } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import katex from 'katex'
+import { sourceKind, sourceTokens } from './source-syntax.js'
+
+export { sourceKind } from './source-syntax.js'
 
 // The pure path / name / format helpers this module used to also hold now live
 // in paths.js (dependency-free so they unit-test under a bare `node --test`).
@@ -179,29 +182,6 @@ export const mdHighlight = HighlightStyle.define([
 // The tokenizer is intentionally conservative: comments and strings win, then
 // keywords, literals, numbers, and JSX-style tags. Unknown extensions stay
 // readable monospace with no speculative color.
-const SOURCE_EXTENSIONS = new Set([
-  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'json', 'css', 'scss', 'html',
-  'htm', 'py', 'sh', 'bash', 'yaml', 'yml', 'toml', 'sql',
-])
-
-const SOURCE_TOKEN_RE = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b(import|from|as|export|default|const|let|var|function|return|if|else|for|while|switch|case|break|continue|try|catch|finally|throw|new|class|extends|async|await|yield|typeof|instanceof|in|of|def|lambda|with|elif|fi|then|select|insert|update|delete|create|where|join|order|group|by)\b|\b(true|false|null|undefined|None|True|False)\b|\b(0x[\da-fA-F]+|\d+(?:\.\d+)?)\b|(<\/?[A-Za-z][\w.-]*)/g
-
-export function sourceKind(path) {
-  const name = String(path || '').split('/').pop() || ''
-  const dot = name.lastIndexOf('.')
-  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
-  return SOURCE_EXTENSIONS.has(ext) ? ext : ''
-}
-
-function tokenClass(match) {
-  if (match[1]) return 'cm-syn-comment'
-  if (match[2]) return 'cm-syn-string'
-  if (match[3]) return 'cm-syn-keyword'
-  if (match[4]) return 'cm-syn-literal'
-  if (match[5]) return 'cm-syn-number'
-  return 'cm-syn-tag'
-}
-
 export function sourceHighlight(path) {
   const kind = sourceKind(path)
   if (!kind) return []
@@ -215,11 +195,8 @@ export function sourceHighlight(path) {
         const marks = []
         for (const { from, to } of view.visibleRanges) {
           const text = view.state.sliceDoc(from, to)
-          SOURCE_TOKEN_RE.lastIndex = 0
-          let match
-          while ((match = SOURCE_TOKEN_RE.exec(text))) {
-            const start = from + match.index
-            marks.push(Decoration.mark({ class: tokenClass(match) }).range(start, start + match[0].length))
+          for (const token of sourceTokens(path, text)) {
+            marks.push(Decoration.mark({ class: token.className }).range(from + token.from, from + token.to))
           }
         }
         return Decoration.set(marks, true)
