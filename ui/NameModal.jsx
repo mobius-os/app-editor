@@ -46,6 +46,8 @@ export function NameModal({ kind, targetDir, error, busy, onSubmit, onCancel }) 
             ref={inputRef}
             className="ed-modal-input"
             type="text"
+            aria-label={isFolder ? 'Folder name' : 'File name'}
+            name={isFolder ? 'folder_name' : 'file_name'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={isFolder ? 'folder-name' : 'file-name.md'}

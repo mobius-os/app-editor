@@ -1189,6 +1189,8 @@ export default function App({ appId, token }) {
           <input
             className="ex-filter-input"
             type="text"
+            aria-label="Filter this folder"
+            name="folder_filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter this folder…"
