@@ -30,9 +30,20 @@ export const CSS = `
      git-specific and the theme can't express them. */
   --ed-amber: #d99a2b;
   --ed-blue: #4a90d9;
+  --ed-code-comment: #7f8c98;
+  --ed-code-string: #9dd6a5;
+  --ed-code-keyword: #c4a7ff;
+  --ed-code-literal: #7dcfff;
+  --ed-code-number: #f0b77d;
+  --ed-code-tag: #ff9fa8;
 }
 @media (prefers-color-scheme: light) {
-  .ex-root { --ed-amber: #8a5a08; --ed-blue: #245ba0; }
+  .ex-root {
+    --ed-amber: #8a5a08; --ed-blue: #245ba0;
+    --ed-code-comment: #64727d; --ed-code-string: #27733a;
+    --ed-code-keyword: #6941b8; --ed-code-literal: #116a91;
+    --ed-code-number: #9a4e12; --ed-code-tag: #a52c3f;
+  }
 }
 
 /* mobius-ui:Scrollskin v2 — hidden scrollbar, content stays scrollable. */
@@ -40,7 +51,8 @@ export const CSS = `
   scrollbar-width: none; -ms-overflow-style: none;
 }
 .ex-scroll::-webkit-scrollbar, .ex-scroll-x::-webkit-scrollbar,
-.ed-git-body::-webkit-scrollbar, .ex-view-scroll::-webkit-scrollbar {
+.ed-git-body::-webkit-scrollbar, .ex-view-scroll::-webkit-scrollbar,
+.ed-cm-host .cm-scroller::-webkit-scrollbar {
   display: none; width: 0; height: 0;
 }
 /* /mobius-ui:Scrollskin */
@@ -402,7 +414,7 @@ export const CSS = `
 .ex-view-alert { flex: 0 0 auto; margin: 8px 10px 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 12%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border)); color: var(--text); font-size: 12.5px; line-height: 1.4; }
 .ex-view-alert.is-notice { background: color-mix(in srgb, var(--ed-amber) 14%, transparent); border-color: color-mix(in srgb, var(--ed-amber) 40%, var(--border)); }
 .ex-view-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ex-view-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ex-view-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--bg) 88%, #000 12%); }
 .ex-view-banner { flex: 0 0 auto; padding: 7px 14px; font-size: 12px; color: var(--muted); background: var(--surface2, var(--surface)); border-bottom: 1px solid var(--border); }
 .ex-view-scroll { flex: 1; overflow: auto; padding: 14px 16px; overscroll-behavior: contain; }
 .ex-view-note { display: flex; align-items: center; gap: 10px; padding: 20px 16px; color: var(--muted); font-size: 14px; line-height: 1.5; }

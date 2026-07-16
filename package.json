@@ -1,9 +1,9 @@
 {
   "name": "app-editor",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
-  "description": "MiXplorer-style file explorer, inspector, and editor for Mobius.",
+  "description": "Browse and edit the files behind your Mobius apps.",
   "license": "MIT",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\""

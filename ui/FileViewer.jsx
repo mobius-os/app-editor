@@ -70,6 +70,7 @@ export function FileViewer({
         )}
         <CodeEditor
           value={content}
+          path={path}
           markdown={isMarkdownPath(path)}
           readOnly={readOnly}
           docKey={`${path}${truncated ? '#head' : ''}`}

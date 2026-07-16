@@ -1,8 +1,8 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.5.2",
-  "description": "Browse, inspect, and edit every file on your M\u00f6bius \u2014 a MiXplorer-style file explorer with breadcrumbs, sort, view modes, a properties inspector, git status, and disk usage, plus an agent that can edit for you.",
+  "version": "0.6.0",
+  "description": "Browse, inspect, and edit every file on your M\u00f6bius. Follow git status, check file details, and ask the agent to make changes with you.",
   "author": "mobius-os",
   "license": "MIT",
   "homepage": "https://github.com/mobius-os/app-editor",

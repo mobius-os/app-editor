@@ -1,5 +1,6 @@
 import {
   EditorView, keymap, ViewPlugin, Decoration, WidgetType,
+  lineNumbers, highlightActiveLine, highlightActiveLineGutter,
 } from '@codemirror/view'
 import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -172,6 +173,62 @@ export const mdHighlight = HighlightStyle.define([
   { tag: tags.contentSeparator, color: 'var(--border)' },
 ])
 
+// The platform ships the core CodeMirror runtime and Markdown parser. Source
+// files still deserve useful color, so the light editor marks common tokens in
+// the visible viewport without pulling a language bundle for every file type.
+// The tokenizer is intentionally conservative: comments and strings win, then
+// keywords, literals, numbers, and JSX-style tags. Unknown extensions stay
+// readable monospace with no speculative color.
+const SOURCE_EXTENSIONS = new Set([
+  'js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'json', 'css', 'scss', 'html',
+  'htm', 'py', 'sh', 'bash', 'yaml', 'yml', 'toml', 'sql',
+])
+
+const SOURCE_TOKEN_RE = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)|\b(import|from|as|export|default|const|let|var|function|return|if|else|for|while|switch|case|break|continue|try|catch|finally|throw|new|class|extends|async|await|yield|typeof|instanceof|in|of|def|lambda|with|elif|fi|then|select|insert|update|delete|create|where|join|order|group|by)\b|\b(true|false|null|undefined|None|True|False)\b|\b(0x[\da-fA-F]+|\d+(?:\.\d+)?)\b|(<\/?[A-Za-z][\w.-]*)/g
+
+export function sourceKind(path) {
+  const name = String(path || '').split('/').pop() || ''
+  const dot = name.lastIndexOf('.')
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
+  return SOURCE_EXTENSIONS.has(ext) ? ext : ''
+}
+
+function tokenClass(match) {
+  if (match[1]) return 'cm-syn-comment'
+  if (match[2]) return 'cm-syn-string'
+  if (match[3]) return 'cm-syn-keyword'
+  if (match[4]) return 'cm-syn-literal'
+  if (match[5]) return 'cm-syn-number'
+  return 'cm-syn-tag'
+}
+
+export function sourceHighlight(path) {
+  const kind = sourceKind(path)
+  if (!kind) return []
+  return ViewPlugin.fromClass(
+    class {
+      constructor(view) { this.decorations = this.build(view) }
+      update(update) {
+        if (update.docChanged || update.viewportChanged) this.decorations = this.build(update.view)
+      }
+      build(view) {
+        const marks = []
+        for (const { from, to } of view.visibleRanges) {
+          const text = view.state.sliceDoc(from, to)
+          SOURCE_TOKEN_RE.lastIndex = 0
+          let match
+          while ((match = SOURCE_TOKEN_RE.exec(text))) {
+            const start = from + match.index
+            marks.push(Decoration.mark({ class: tokenClass(match) }).range(start, start + match[0].length))
+          }
+        }
+        return Decoration.set(marks, true)
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  )
+}
+
 export const cmTheme = EditorView.theme({
   '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text)' },
   '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--font)', lineHeight: '1.65', fontSize: '15px', overscrollBehavior: 'contain' },
@@ -187,13 +244,27 @@ export const cmTheme = EditorView.theme({
 // A plain-text theme for non-markdown source — monospace, no markdown
 // highlighting, no live preview. Same chrome as the markdown editor.
 export const cmThemePlain = EditorView.theme({
-  '&': { height: '100%', backgroundColor: 'transparent', color: 'var(--text)' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'var(--mono)', lineHeight: '1.6', fontSize: '13.5px', overscrollBehavior: 'contain' },
-  '.cm-content': { padding: '14px 16px 30vh', caretColor: 'var(--accent)' },
+  '&': { height: '100%', backgroundColor: 'color-mix(in srgb, var(--bg) 88%, #000 12%)', color: 'var(--text)' },
+  '.cm-scroller': {
+    overflow: 'auto', fontFamily: 'var(--mono, "SFMono-Regular", "Cascadia Code", ui-monospace, monospace)',
+    fontVariantLigatures: 'contextual common-ligatures', letterSpacing: '0.005em',
+    lineHeight: '1.68', fontSize: '13.5px', overscrollBehavior: 'contain', scrollbarWidth: 'none',
+  },
+  '.cm-content': { padding: '16px 18px 35vh 8px', caretColor: 'var(--accent)' },
   '&.cm-focused': { outline: 'none' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
   '.cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 22%, transparent)' },
   '&.cm-focused .cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' },
+  '.cm-gutters': { backgroundColor: 'color-mix(in srgb, var(--surface) 72%, var(--bg) 28%)', color: 'color-mix(in srgb, var(--muted) 72%, transparent)', border: 'none', paddingLeft: '5px' },
+  '.cm-lineNumbers .cm-gutterElement': { padding: '0 10px 0 6px', minWidth: '30px' },
+  '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--accent) 7%, transparent)' },
+  '.cm-activeLineGutter': { backgroundColor: 'color-mix(in srgb, var(--accent) 10%, transparent)', color: 'var(--text)' },
+  '.cm-syn-comment': { color: 'var(--ed-code-comment)', fontStyle: 'italic' },
+  '.cm-syn-string': { color: 'var(--ed-code-string)' },
+  '.cm-syn-keyword': { color: 'var(--ed-code-keyword)', fontWeight: '650' },
+  '.cm-syn-literal': { color: 'var(--ed-code-literal)' },
+  '.cm-syn-number': { color: 'var(--ed-code-number)' },
+  '.cm-syn-tag': { color: 'var(--ed-code-tag)' },
 })
 
 export function buildMarkdownExtensions(onDocChange) {
@@ -210,9 +281,13 @@ export function buildMarkdownExtensions(onDocChange) {
   ]
 }
 
-export function buildPlainExtensions(onDocChange) {
+export function buildPlainExtensions(onDocChange, path) {
   return [
     history(),
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    highlightActiveLine(),
+    sourceHighlight(path),
     EditorView.lineWrapping,
     keymap.of([indentWithTab, ...historyKeymap, ...defaultKeymap]),
     cmThemePlain,

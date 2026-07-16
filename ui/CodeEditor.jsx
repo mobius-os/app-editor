@@ -17,7 +17,7 @@ import { buildMarkdownExtensions, buildPlainExtensions } from '../domain.js'
 // and reset the caret to position 0. Instead read-only is reconfigured live
 // through a Compartment, leaving the view (and cursor) intact.
 // ----------------------------------------------------------------------
-export function CodeEditor({ value, markdown: isMd, readOnly, docKey, onChange }) {
+export function CodeEditor({ value, path, markdown: isMd, readOnly, docKey, onChange }) {
   const host = useRef(null)
   const view = useRef(null)
   const onChangeRef = useRef(onChange)
@@ -35,7 +35,7 @@ export function CodeEditor({ value, markdown: isMd, readOnly, docKey, onChange }
       lastEmitted.current = text
       if (onChangeRef.current) onChangeRef.current(text)
     }
-    const base = isMd ? buildMarkdownExtensions(emit) : buildPlainExtensions(emit)
+    const base = isMd ? buildMarkdownExtensions(emit) : buildPlainExtensions(emit, path)
     const extensions = [
       ...base,
       roCompartment.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
