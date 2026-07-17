@@ -73,7 +73,44 @@ export class MathWidget extends WidgetType {
   ignoreEvent() { return true }
 }
 
-export const HIDE_MARKS = new Set(['HeaderMark', 'EmphasisMark', 'StrikethroughMark', 'QuoteMark', 'ListMark', 'LinkMark', 'CodeMark', 'CodeInfo'])
+class TextWidget extends WidgetType {
+  constructor(text, className, role = null) {
+    super()
+    this.text = text
+    this.className = className
+    this.role = role
+  }
+  eq(other) {
+    return other.text === this.text && other.className === this.className && other.role === this.role
+  }
+  toDOM() {
+    const el = document.createElement('span')
+    el.className = this.className
+    el.textContent = this.text
+    if (this.role) el.setAttribute('role', this.role)
+    return el
+  }
+  ignoreEvent() { return true }
+}
+
+class RuleWidget extends WidgetType {
+  toDOM() {
+    const el = document.createElement('span')
+    el.className = 'ed-md-rule'
+    el.setAttribute('role', 'separator')
+    el.setAttribute('aria-label', 'Section break')
+    return el
+  }
+  ignoreEvent() { return true }
+}
+
+function inlineCodeText(source) {
+  const opening = source.match(/^`+/)?.[0] || ''
+  if (!opening || !source.endsWith(opening)) return source
+  return source.slice(opening.length, -opening.length)
+}
+
+export const HIDE_MARKS = new Set(['HeaderMark', 'EmphasisMark', 'StrikethroughMark', 'QuoteMark', 'LinkMark', 'CodeMark'])
 export const INLINE_MATH = /(?<!\$)\$([^$\n]+?)\$(?!\$)/g
 export const BLOCK_MATH = /\$\$([^\n]+?)\$\$/g
 
@@ -110,7 +147,7 @@ export function livePreview() {
     class {
       constructor(view) { this.decorations = this.build(view) }
       update(u) {
-        if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = this.build(u.view)
+        if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged) this.decorations = this.build(u.view)
       }
       build(view) {
         try {
@@ -118,8 +155,27 @@ export function livePreview() {
           const sel = state.selection.main
           const aFrom = state.doc.lineAt(sel.from).from
           const aTo = state.doc.lineAt(sel.to).to
-          const onActive = (from, to) => to >= aFrom && from <= aTo
+          // A newly opened document has a selection at byte zero even though
+          // the owner has not entered the editor. Only reveal Markdown source
+          // markers once the editor really has focus; otherwise a first-line
+          // `# Title` opens as a rendered title, not raw source.
+          const onActive = (from, to) => view.hasFocus && to >= aFrom && from <= aTo
           const out = []
+          const lineClasses = new Map()
+          const addLineClass = (lineNo, className) => {
+            const current = lineClasses.get(lineNo) || new Set()
+            current.add(className)
+            lineClasses.set(lineNo, current)
+          }
+          const addNodeLines = (node, className, edgeClasses = false) => {
+            const first = state.doc.lineAt(node.from).number
+            const last = state.doc.lineAt(Math.max(node.from, node.to - 1)).number
+            for (let n = first; n <= last; n += 1) {
+              addLineClass(n, className)
+              if (edgeClasses && n === first) addLineClass(n, `${className}--first`)
+              if (edgeClasses && n === last) addLineClass(n, `${className}--last`)
+            }
+          }
           const tree = syntaxTree(state)
           for (const { from, to } of view.visibleRanges) {
             tree.iterate({
@@ -132,13 +188,61 @@ export function livePreview() {
                     const text = state.sliceDoc(node.from, node.to)
                     out.push({ from: node.from, to: node.to, deco: Decoration.replace({ widget: new CheckboxWidget(/x/i.test(text), node.from) }) })
                   }
+                } else if (name === 'HorizontalRule') {
+                  if (!onActive(node.from, node.to)) {
+                    out.push({ from: node.from, to: node.to, deco: Decoration.replace({ widget: new RuleWidget() }) })
+                  }
+                } else if (name === 'InlineCode') {
+                  if (!onActive(node.from, node.to)) {
+                    const text = inlineCodeText(state.sliceDoc(node.from, node.to))
+                    out.push({ from: node.from, to: node.to, deco: Decoration.replace({ widget: new TextWidget(text, 'ed-md-inline-code') }) })
+                    return false
+                  }
+                } else if (name === 'CodeInfo') {
+                  if (!onActive(node.from, node.to)) {
+                    const text = state.sliceDoc(node.from, node.to).trim()
+                    out.push({ from: node.from, to: node.to, deco: Decoration.replace({ widget: new TextWidget(text, 'ed-md-code-info') }) })
+                  }
+                } else if (name === 'ListMark') {
+                  if (!onActive(node.from, node.to)) {
+                    const source = state.sliceDoc(node.from, node.to)
+                    const after = state.sliceDoc(node.to, Math.min(state.doc.length, node.to + 5))
+                    const task = /^\s*\[[ xX]\]/.test(after)
+                    const label = task ? '' : (/^\d/.test(source) ? source : '•')
+                    out.push({
+                      from: node.from,
+                      to: node.to,
+                      deco: Decoration.replace({ widget: new TextWidget(label, `ed-md-list-mark${task ? ' is-task' : ''}`) }),
+                    })
+                  }
+                } else if (name === 'URL' && node.node?.parent?.name === 'Link') {
+                  // In `[label](destination)`, LinkMark owns the brackets and
+                  // parentheses while URL owns the destination. Hide both in
+                  // preview mode so the rendered link is just its label.
+                  if (!onActive(node.from, node.to)) out.push({ from: node.from, to: node.to, deco: Decoration.replace({}) })
                 } else if (HIDE_MARKS.has(name)) {
                   if (!onActive(node.from, node.to)) out.push({ from: node.from, to: node.to, deco: Decoration.replace({}) })
+                }
+
+                if (/^ATXHeading[1-6]$/.test(name)) {
+                  addNodeLines(node, `ed-md-heading ed-md-${name.toLowerCase()}`)
+                } else if (name === 'FencedCode') {
+                  addNodeLines(node, 'ed-md-code-line', true)
+                } else if (name === 'Blockquote') {
+                  addNodeLines(node, 'ed-md-quote-line')
                 }
               },
             })
           }
           scanMath(state, view.visibleRanges, onActive, out)
+          for (const [lineNo, classes] of lineClasses) {
+            const line = state.doc.line(lineNo)
+            out.push({
+              from: line.from,
+              to: line.from,
+              deco: Decoration.line({ attributes: { class: [...classes].join(' ') } }),
+            })
+          }
           out.sort((a, b) => a.from - b.from || a.to - b.to)
           // Drop overlaps — CM requires non-overlapping replace decorations.
           const ranges = []
@@ -169,7 +273,7 @@ export const mdHighlight = HighlightStyle.define([
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.link, color: 'var(--accent)', textDecoration: 'underline' },
   { tag: tags.url, color: 'var(--muted)' },
-  { tag: [tags.monospace], fontFamily: 'var(--mono)', fontSize: '0.92em', background: 'var(--surface2)', borderRadius: '4px', padding: '0 3px' },
+  { tag: [tags.monospace], fontFamily: 'var(--mono)', fontSize: '0.92em' },
   { tag: tags.quote, color: 'var(--muted)', fontStyle: 'italic' },
   { tag: tags.list, color: 'var(--text)' },
   { tag: tags.processingInstruction, color: 'var(--muted)', opacity: 0.6 },
@@ -215,6 +319,46 @@ export const cmTheme = EditorView.theme({
   '.cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 22%, transparent)' },
   '&.cm-focused .cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' },
   '.cm-line': { padding: '0' },
+  '.ed-md-heading': { paddingTop: '0.36em', paddingBottom: '0.14em' },
+  '.ed-md-atxheading1': { marginTop: '0.16em' },
+  '.ed-md-code-line': {
+    paddingLeft: '14px', paddingRight: '14px',
+    backgroundColor: 'color-mix(in srgb, var(--surface) 76%, var(--bg) 24%)',
+    fontFamily: 'var(--mono)', fontSize: '0.92em', lineHeight: '1.65',
+    borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)',
+  },
+  '.ed-md-code-line--first': {
+    paddingTop: '8px', borderTop: '1px solid var(--border)',
+    borderTopLeftRadius: '9px', borderTopRightRadius: '9px',
+  },
+  '.ed-md-code-line--last': {
+    paddingBottom: '8px', borderBottom: '1px solid var(--border)',
+    borderBottomLeftRadius: '9px', borderBottomRightRadius: '9px',
+  },
+  '.ed-md-code-info': {
+    display: 'inline-block', fontFamily: 'var(--font)', fontSize: '10px',
+    lineHeight: '1.4', letterSpacing: '0.04em', textTransform: 'uppercase',
+    color: 'var(--muted)', userSelect: 'none',
+  },
+  '.ed-md-inline-code': {
+    display: 'inline', padding: '1px 5px', borderRadius: '5px',
+    border: '1px solid color-mix(in srgb, var(--border) 75%, transparent)',
+    backgroundColor: 'var(--surface2)', color: 'var(--text)',
+    fontFamily: 'var(--mono)', fontSize: '0.9em',
+  },
+  '.ed-md-rule': {
+    display: 'inline-block', width: '100%', height: '1px', margin: '0.8em 0 0.28em',
+    verticalAlign: 'middle', backgroundColor: 'color-mix(in srgb, var(--muted) 48%, var(--border))',
+  },
+  '.ed-md-list-mark': {
+    display: 'inline-block', minWidth: '1.3em', color: 'var(--muted)',
+    fontWeight: '700', userSelect: 'none',
+  },
+  '.ed-md-list-mark.is-task': { minWidth: '0.2em' },
+  '.ed-md-quote-line': {
+    paddingLeft: '14px', borderLeft: '3px solid color-mix(in srgb, var(--accent) 55%, var(--border))',
+    color: 'var(--muted)',
+  },
   '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--muted)', border: 'none' },
 })
 

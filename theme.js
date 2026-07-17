@@ -145,7 +145,7 @@ export const CSS = `
 .ex-tab.is-active { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
 .ex-tab-btn {
   flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px;
-  min-height: 44px; padding: 4px 4px 4px 10px; border: 0; background: transparent;
+  min-height: 44px; padding: 4px 12px; border: 0; background: transparent;
   color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
