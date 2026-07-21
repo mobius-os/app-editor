@@ -1,8 +1,8 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.6.4",
-  "description": "Browse, inspect, and edit every file on your M\u00f6bius. Follow git status, check file details, and ask the agent to make changes with you.",
+  "version": "0.6.5",
+  "description": "Browse, inspect, and edit every file on your Möbius. Follow git status, check file details, and ask the agent to make changes with you.",
   "author": "mobius-os",
   "license": "MIT",
   "homepage": "https://github.com/mobius-os/app-editor",
@@ -33,7 +33,7 @@
     "ui/ChatPanel.jsx",
     "ui/ChatBubbleIcon.jsx"
   ],
-  "icon": "icon.png",
+  "icon": "icon-v2.png",
   "offline_capable": false,
   "offline": {
     "reads": false,
