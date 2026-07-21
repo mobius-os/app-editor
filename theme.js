@@ -18,6 +18,11 @@ export const CSS = `
 }
 /* /mobius-ui:Focus */
 
+.ex-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
 .ex-root {
   position: relative;
   display: flex; flex-direction: column;
@@ -26,10 +31,11 @@ export const CSS = `
   background: var(--bg); color: var(--text); font-family: var(--font);
   -webkit-font-smoothing: antialiased;
   /* Git-signal colors: structure stays monochrome/accent; hue is reserved for
-     git meaning only. --green/--danger come from the theme; amber/blue are
-     git-specific and the theme can't express them. */
-  --ed-amber: #d99a2b;
-  --ed-blue: #4a90d9;
+     source-control meaning only. These fixed tones keep each state legible in
+     both explicit and system-selected themes. */
+  --ed-amber: #efb64a;
+  --ed-blue: #75b6ff;
+  --ed-green: #4fd1a2;
   --ed-code-comment: #7f8c98;
   --ed-code-string: #9dd6a5;
   --ed-code-keyword: #c4a7ff;
@@ -38,12 +44,20 @@ export const CSS = `
   --ed-code-tag: #ff9fa8;
 }
 @media (prefers-color-scheme: light) {
-  .ex-root {
-    --ed-amber: #8a5a08; --ed-blue: #245ba0;
+  :root:not([data-theme]) .ex-root {
+    --ed-amber: #714600; --ed-blue: #174f91; --ed-green: #066b4d;
     --ed-code-comment: #64727d; --ed-code-string: #27733a;
     --ed-code-keyword: #6941b8; --ed-code-literal: #116a91;
     --ed-code-number: #9a4e12; --ed-code-tag: #a52c3f;
   }
+}
+:root[data-theme="light"] .ex-root {
+  --ed-amber: #714600;
+  --ed-blue: #174f91;
+  --ed-green: #066b4d;
+  --ed-code-comment: #64727d; --ed-code-string: #27733a;
+  --ed-code-keyword: #6941b8; --ed-code-literal: #116a91;
+  --ed-code-number: #9a4e12; --ed-code-tag: #a52c3f;
 }
 
 /* mobius-ui:Scrollskin v2 — hidden scrollbar, content stays scrollable. */
@@ -97,6 +111,13 @@ export const CSS = `
 .ex-icon-btn:focus:not(:focus-visible) { outline: none; }
 .ex-icon-btn.is-active { color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
 .ex-chat-toggle.is-active { color: var(--accent); }
+.ex-brand-icon { display: block; width: 34px; height: 34px; object-fit: contain; }
+.ex-drawer-toggle { width: 44px; height: 44px; }
+.ex-brand-fallback {
+  width: 34px; height: 34px; align-items: center; justify-content: center;
+  border-radius: 9px; color: var(--accent);
+  background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent));
+}
 .ex-dirty-dot {
   flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
@@ -175,10 +196,6 @@ export const CSS = `
   flex: 1; min-width: 0; min-height: 32px; border: 0; background: transparent;
   color: var(--text); font-family: var(--font); font-size: 16px; outline: none;
 }
-.ex-sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
-}
 .ex-filter-clear {
   flex: 0 0 auto; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer;
@@ -189,7 +206,7 @@ export const CSS = `
 .ex-body { flex: 1; min-height: 0; position: relative; display: flex; }
 .ex-scrim {
   position: absolute; inset: 0; z-index: 30; background: rgba(0,0,0,0.5);
-  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+  padding: 0; border: 0; opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
 }
 .ex-scrim.is-open { opacity: 1; pointer-events: auto; }
 .ex-drawer {
@@ -240,7 +257,6 @@ export const CSS = `
 .ex-row-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .ex-row-name { min-width: 0; font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-row-dir .ex-row-name { font-weight: 650; }
-.ex-recent-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--ed-blue); }
 .ex-row-meta { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-row-chevron { flex: 0 0 auto; color: color-mix(in srgb, var(--muted) 70%, transparent); }
 .ex-badge-git {
@@ -248,8 +264,9 @@ export const CSS = `
   background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
 }
 .ex-badge-git--cell { position: absolute; top: 6px; left: 6px; }
+.ex-cell-change { max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; }
 .ex-row-info {
-  flex: 0 0 auto; width: 40px; min-height: 44px; padding: 0;
+  flex: 0 0 auto; width: 44px; min-height: 44px; padding: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: 0; border-radius: 8px; color: var(--muted);
   cursor: pointer; opacity: 0.55; transition: opacity 0.12s, color 0.12s, background 0.12s;
@@ -265,9 +282,10 @@ export const CSS = `
   font-size: 10.5px; font-weight: 700; white-space: nowrap;
   background: color-mix(in srgb, var(--chip) 16%, transparent); color: var(--chip);
 }
-.ed-chip.tone-staged, .ex-chip.tone-staged { --chip: var(--green); }
+.ed-chip.tone-staged, .ex-chip.tone-staged { --chip: var(--ed-green); }
 .ed-chip.tone-modified, .ex-chip.tone-modified { --chip: var(--ed-amber); }
 .ed-chip.tone-untracked, .ex-chip.tone-untracked { --chip: var(--ed-blue); }
+.ed-chip.tone-renamed, .ex-chip.tone-renamed { --chip: var(--ed-blue); }
 .ed-chip.tone-deleted, .ex-chip.tone-deleted { --chip: var(--danger); }
 .ed-chip.tone-renamed, .ex-chip.tone-renamed { --chip: var(--ed-blue); }
 
@@ -285,19 +303,24 @@ export const CSS = `
 }
 @media (hover: hover) { .ex-cell:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); } }
 .ex-cell-wrap.is-selected .ex-cell { border-color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 10%, transparent)); }
-.ex-cell-art { width: 100%; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--bg); overflow: hidden; }
+.ex-cell-art { width: 100%; display: flex; align-items: center; justify-content: center; border-radius: 9px; overflow: hidden; }
+.ex-cell-art.is-thumb { aspect-ratio: 1 / 1; background: var(--bg); }
+.ex-cell-art.is-glyph {
+  height: 76px;
+  background: transparent;
+}
 .ex-cell-name { width: 100%; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-cell-meta { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ex-thumb { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .ex-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ex-thumb-fallback { color: var(--muted); font-family: var(--mono); }
 .ex-cell-info {
-  position: absolute; top: 4px; right: 4px; width: 28px; height: 28px;
+  position: absolute; top: 0; right: 0; width: 44px; height: 44px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 8px; background: color-mix(in srgb, var(--bg) 70%, transparent); color: var(--muted);
-  cursor: pointer; opacity: 0.7;
+  border: 0; border-radius: 10px; background: transparent; color: var(--muted);
+  cursor: pointer; opacity: 0.72;
 }
-@media (hover: hover) { .ex-cell-info:hover { opacity: 1; color: var(--accent); } }
+@media (hover: hover) { .ex-cell-info:hover { opacity: 1; color: var(--accent); background: color-mix(in srgb, var(--surface) 88%, transparent); } }
 
 /* ---- Status bar ---- */
 .ex-status {
@@ -474,28 +497,31 @@ export const CSS = `
 .ex-media-pdf { width: 100%; min-height: 70vh; border: 0; background: var(--surface2, var(--bg)); }
 .ed-note { padding: 16px; color: var(--muted); font-size: 13px; }
 
-/* ---- Reused: GitPanel (git banner) ---- */
+/* ---- Reused: GitPanel (source control) ---- */
 .ed-git { flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--surface); }
-.ed-git-bar { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 14px; text-align: left; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); font-size: 12.5px; -webkit-tap-highlight-color: transparent; }
+.ed-git-bar { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 52px; padding: 8px 12px; text-align: left; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); font-size: 12.5px; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .ed-git-bar.is-quiet { color: var(--muted); cursor: default; min-height: 32px; font-size: 12px; }
-.ed-git-caret { flex: 0 0 auto; width: 16px; font-size: 14px; line-height: 1; color: var(--muted); }
-.ed-git-branch { font-weight: 700; font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
-.ed-git-track { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-.ed-git-counts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
-.ed-git-count { font-weight: 700; font-size: 11.5px; }
-.ed-git-count.is-staged { color: var(--green); }
-.ed-git-count.is-modified { color: var(--ed-amber); }
-.ed-git-count.is-untracked { color: var(--ed-blue); }
-.ed-git-count.is-clean { color: var(--muted); font-weight: 600; }
-.ed-git-body { padding: 4px 14px 12px; max-height: 34vh; overflow-y: auto; overscroll-behavior: contain; }
+.ed-git-mark { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ed-git-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ed-git-title { font-size: 12.5px; font-weight: 700; }
+.ed-git-branch { font-size: 10.5px; font-weight: 550; font-family: var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-git-track { color: var(--muted); font-variant-numeric: tabular-nums; }
+.ed-git-total { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ed-amber); font-variant-numeric: tabular-nums; }
+.ed-git-total.is-clean { color: var(--muted); font-weight: 600; }
+.ed-git-chevron { flex: 0 0 auto; color: var(--muted); transition: transform 0.18s ease; transform: rotate(-90deg); }
+.ed-git-chevron.is-open { transform: rotate(0); }
+.ed-git-body { padding: 0 10px 12px; max-height: 38vh; overflow-y: auto; overscroll-behavior: contain; }
 .ed-git-group { margin-top: 8px; }
-.ed-git-group-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
-.ed-git-file { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin-bottom: 6px; padding: 8px 10px; text-align: left; border-radius: 10px; background: var(--surface2, var(--surface)); border: 1px solid var(--border); color: var(--text); cursor: pointer; font-family: var(--font); transition: border-color 0.12s ease, background 0.12s ease; }
-@media (hover: hover) { .ed-git-file:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); } }
+.ed-git-group-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px 5px; font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ed-git-file { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 6px 8px; text-align: left; border-radius: 8px; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); transition: background 0.12s ease; }
+@media (hover: hover) { .ed-git-file:hover { background: var(--surface2, var(--bg)); } }
+.ed-git-file:disabled { cursor: default; opacity: 0.72; }
+.ed-git-file-icon { flex: 0 0 auto; width: 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
 .ed-git-file-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ed-git-file-name { font-size: 12.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-git-file-dir { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ed-git-more { margin: 2px 0 4px; font-size: 11px; color: var(--muted); font-style: italic; }
+.ed-git-help { padding: 9px 8px 0; font-size: 10.5px; line-height: 1.4; color: var(--muted); }
 
 /* ---- Reused: modals (NameModal / ConfirmModal) ---- */
 .ed-modal { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.32); margin: auto; }

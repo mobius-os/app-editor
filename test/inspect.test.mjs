@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  relativeTime, formatDateAbs, isRecent, pathSegments, parentDir,
+  relativeTime, formatDateAbs, pathSegments, parentDir,
   kindLabel, sortEntries, pushRecent, fileKind, entryIcon, mediaKind,
 } from '../paths.js'
 
@@ -25,12 +25,6 @@ test('relativeTime buckets recent → older, injectable now', () => {
 test('formatDateAbs renders a zero-padded local timestamp', () => {
   assert.match(formatDateAbs('2026-07-12T16:03:00Z'), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
   assert.equal(formatDateAbs(''), '')
-})
-
-test('isRecent is true only within the 24h window', () => {
-  assert.equal(isRecent(ago(60 * 1000), NOW), true)
-  assert.equal(isRecent(ago(25 * 3600 * 1000), NOW), false)
-  assert.equal(isRecent('', NOW), false)
 })
 
 test('pathSegments builds breadcrumb segments, root first', () => {

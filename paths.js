@@ -9,7 +9,7 @@
 // Paths are FS-root-relative, '/'-joined, no leading slash.
 // ----------------------------------------------------------------------
 import {
-  MARKDOWN_EXTS, IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, RECENT_MS, RECENTS_MAX,
+  MARKDOWN_EXTS, IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, RECENTS_MAX,
   SORT_NAME, SORT_SIZE, SORT_MODIFIED, SORT_KIND,
 } from './constants.js'
 
@@ -179,13 +179,6 @@ export function formatDateAbs(iso) {
   const d = new Date(t)
   const p = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-// True if the entry was modified within RECENT_MS (drives the "changed" dot).
-export function isRecent(iso, now = Date.now()) {
-  if (!iso) return false
-  const t = Date.parse(iso)
-  return Number.isFinite(t) && now - t >= 0 && now - t < RECENT_MS
 }
 
 // Break a dir path into breadcrumb segments, root first. '' → [{name:'/data',

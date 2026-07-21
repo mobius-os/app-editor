@@ -22,10 +22,6 @@ export const PREFS_PATH = 'ui-prefs.json'
 // media query never disagree.
 export const DESKTOP_BREAKPOINT = 760
 
-// A file whose mtime is within this window gets a subtle "changed" dot so the
-// owner can spot at a glance what the agent (or they) just touched.
-export const RECENT_MS = 24 * 60 * 60 * 1000
-
 // Directory-listing safety. The FS is huge, so a directory is fetched one level
 // at a time; a single level can still be thousands of entries (node_modules),
 // so we page through cursors but cap the total so a pathological dir can't pull

@@ -27,7 +27,7 @@ import {
 } from 'react'
 import {
   DESKTOP_BREAKPOINT, LISTING_PAGE_CAP, LISTING_ENTRY_CAP,
-  SHORTCUTS, DEFAULT_PREFS, VIEW_LIST, VIEW_GRID, TABS_MAX,
+  SHORTCUTS, DEFAULT_PREFS, VIEW_LIST, VIEW_GRID, TABS_MAX, FOCUSABLE_SELECTOR,
 } from './constants.js'
 import { CSS } from './theme.js'
 import {
@@ -64,7 +64,12 @@ function buildChangeMap(git) {
   const root = git.repo_root || ''
   const put = (p, chip) => { map[root ? `${root}/${p}` : p] = chip }
   for (const it of git.staged || []) put(it.path, { tone: 'staged', label: 'Staged' })
-  for (const it of git.modified || []) put(it.path, { tone: 'modified', label: 'Modified' })
+  for (const it of git.modified || []) {
+    const path = root ? `${root}/${it.path}` : it.path
+    put(it.path, map[path]
+      ? { tone: 'modified', label: 'Staged + Modified' }
+      : { tone: 'modified', label: 'Modified' })
+  }
   for (const it of git.untracked || []) put(it.path.replace(/\/+$/, ''), { tone: 'untracked', label: 'New' })
   return map
 }
@@ -131,6 +136,7 @@ export default function App({ appId, token }) {
   const [gitError, setGitError] = useState(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
+  const gitAutoOpenedRef = useRef(new Set())
 
   // --- Open-file / editor state (reused verbatim from the prior Editor) ---
   const [selectedPath, setSelectedPath] = useState(null)
@@ -296,6 +302,16 @@ export default function App({ appId, token }) {
     try {
       const g = await fsGit(forDir || '')
       if (cwdRef.current !== forDir) return
+      const counts = g.counts || {}
+      const hasChanges = (counts.staged || 0) + (counts.modified || 0) + (counts.untracked || 0) > 0
+      const repoKey = g.repo_root || '.'
+      // Reveal a dirty repository only on its first encounter this session.
+      // Once the owner collapses it, later status refreshes never override that
+      // explicit choice.
+      if (hasChanges && !gitAutoOpenedRef.current.has(repoKey)) {
+        gitAutoOpenedRef.current.add(repoKey)
+        setGitOpen(true)
+      }
       setGit(g); setGitError(null)
     } catch (e) {
       if (cwdRef.current !== forDir) return
@@ -867,6 +883,18 @@ export default function App({ appId, token }) {
   const toggleNav = useCallback(() => { if (navOpen) closeNav(); else openNav() }, [navOpen, closeNav, openNav])
 
   const drawerRef = useRef(null)
+  const navToggleRef = useRef(null)
+  const navWasOpenRef = useRef(false)
+  useEffect(() => {
+    if (isDesktop) { navWasOpenRef.current = navOpen; return undefined }
+    const wasOpen = navWasOpenRef.current
+    navWasOpenRef.current = navOpen
+    const frame = requestAnimationFrame(() => {
+      if (navOpen) drawerRef.current?.querySelector(FOCUSABLE_SELECTOR)?.focus()
+      else if (wasOpen) navToggleRef.current?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [navOpen, isDesktop])
   const dragStart = useRef(null)
   function onDrawerTouchStart(e) {
     if (isDesktop) return
@@ -1029,6 +1057,7 @@ export default function App({ appId, token }) {
               key={entry.path}
               entry={entry}
               selected={entry.path === selectedPath}
+              changeChip={changeMap[entry.path]}
               onOpen={(e) => (e.type === 'directory' ? drillInto(e) : attemptSelectFile(e.path))}
               onProps={openProps}
               now={now}
@@ -1058,7 +1087,7 @@ export default function App({ appId, token }) {
   function renderBrowser() {
     return (
       <section className="ex-browser">
-        {(cwd !== '' || git || gitLoading) && (
+        {(git || gitLoading || (gitError && gitError.status !== 404)) && (
           <GitPanel
             git={git}
             gitError={gitError}
@@ -1118,12 +1147,30 @@ export default function App({ appId, token }) {
       {showTopBar && (
         <header className="ex-appbar">
           <button
+            type="button"
+            ref={navToggleRef}
             className="ex-icon-btn ex-drawer-toggle"
             onClick={toggleNav}
             aria-label={navOpen ? 'Close places' : 'Open places'}
             aria-expanded={navOpen}
+            aria-controls="editor-places"
+            title="Toggle places"
           >
-            <Icon name="menu" size={22} />
+            <img
+              src={`/api/apps/${appId}/icon?size=64`}
+              alt=""
+              width={34}
+              height={34}
+              className="ex-brand-icon"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+                const fallback = e.currentTarget.nextElementSibling
+                if (fallback) fallback.style.display = 'inline-flex'
+              }}
+            />
+            <span className="ex-brand-fallback" style={{ display: 'none' }} aria-hidden="true">
+              <Icon name="code" size={19} />
+            </span>
           </button>
           {cwd !== '' && (
             <button
@@ -1195,6 +1242,7 @@ export default function App({ appId, token }) {
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter this folder…"
             autoFocus
+            autoComplete="off"
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
@@ -1206,8 +1254,16 @@ export default function App({ appId, token }) {
       )}
 
       <div className="ex-body">
-        <div className={`ex-scrim${navOpen ? ' is-open' : ''}`} onClick={closeNav} aria-hidden="true" />
+        <button
+          type="button"
+          className={`ex-scrim${navOpen ? ' is-open' : ''}`}
+          onClick={closeNav}
+          aria-label="Close places"
+          aria-hidden={!navOpen}
+          tabIndex={navOpen ? 0 : -1}
+        />
         <aside
+          id="editor-places"
           ref={drawerRef}
           className={`ex-drawer${navOpen ? ' is-open' : ''}`}
           aria-label="Places"

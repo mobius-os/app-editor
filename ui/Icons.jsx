@@ -20,7 +20,7 @@ const PATHS = {
   'arrow-left': <><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></>,
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></>,
   apps: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
-  folder: <path d="M3 7a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.6.8l.9 1.2H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
+  folder: <><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.1c.7 0 1.36.3 1.82.82L12 7h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5Z" fill="currentColor" fillOpacity=".12" /><path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.1c.7 0 1.36.3 1.82.82L12 7h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5Z" /></>,
   file: <><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" /><path d="M14 3v6h6" /></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="m21 16-5-5L5 21" /></>,
   brain: <><circle cx="7" cy="7" r="2" /><circle cx="17" cy="9" r="2" /><circle cx="10" cy="16" r="2" /><path d="M8.7 8.2 15.4 8.6M8.7 14.4 15.6 10.4M9.5 8.9l0.2 5.1" /></>,
@@ -61,7 +61,7 @@ const PATHS = {
 // hollow outline used for the "pin this" affordance.
 const FILLED = new Set(['star-filled'])
 
-export function Icon({ name, size = 20, className, strokeWidth = 2, ...rest }) {
+export function Icon({ name, size = 20, className, strokeWidth = 1.8, ...rest }) {
   const key = name === 'star-filled' ? 'star' : name
   const children = PATHS[key]
   if (!children) return null

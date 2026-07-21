@@ -74,7 +74,7 @@ function Thumb({ path, reloadKey }) {
   )
 }
 
-export function GridCell({ entry, selected, onOpen, onProps, now, reloadKey }) {
+export function GridCell({ entry, selected, changeChip, onOpen, onProps, now, reloadKey }) {
   const isDir = entry.type === 'directory'
   const ic = entryIcon(entry)
   const showThumb = isThumbable(entry) && (entry.size || 0) <= THUMB_MAX_BYTES
@@ -87,10 +87,10 @@ export function GridCell({ entry, selected, onOpen, onProps, now, reloadKey }) {
         aria-current={selected ? 'true' : undefined}
         title={`/data/${entry.path}`}
       >
-        <span className="ex-cell-art" aria-hidden="true">
+        <span className={`ex-cell-art ${showThumb ? 'is-thumb' : 'is-glyph'}`} aria-hidden="true">
           {showThumb
             ? <Thumb path={entry.path} reloadKey={reloadKey} />
-            : <Icon name={ic.name} size={30} className={`ex-glyph ex-glyph--${ic.tone}`} />}
+            : <Icon name={ic.name} size={36} className={`ex-glyph ex-glyph--${ic.tone}`} />}
         </span>
         <span className="ex-cell-name">{entry.name}</span>
         <span className="ex-cell-meta">
@@ -99,6 +99,11 @@ export function GridCell({ entry, selected, onOpen, onProps, now, reloadKey }) {
             : formatBytes(entry.size)}
         </span>
         {entry.is_git_repo && <span className="ex-badge-git ex-badge-git--cell">git</span>}
+        {changeChip && (
+          <span className={`ex-chip ex-cell-change tone-${changeChip.tone}`} title={changeChip.label}>
+            {changeChip.label === 'Staged + Modified' ? 'Staged + local' : changeChip.label}
+          </span>
+        )}
       </button>
       <button
         type="button"

@@ -1,6 +1,6 @@
 import { Icon } from './Icons.jsx'
 import {
-  entryIcon, formatBytes, relativeTime, isRecent, isImagePath,
+  entryIcon, formatBytes, relativeTime, isImagePath,
 } from '../paths.js'
 
 // ----------------------------------------------------------------------
@@ -11,14 +11,13 @@ import {
 //
 // Observability lives in the row: relative modified time, exact size, an
 // immediate item-count for folders (when the server sent child_count), a git
-// change chip for a file the agent touched, a "git" badge on repo folders, and
-// a subtle recent-change dot. Everything the owner needs to scan "what is here
-// and what just changed" without opening anything.
+// change chip for a file the agent touched and a "git" badge on repo folders.
+// The relative modified time already communicates recency; an older blue-dot
+// marker duplicated that information and collided with Git's untracked color.
 // ----------------------------------------------------------------------
 export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) {
   const isDir = entry.type === 'directory'
   const ic = entryIcon(entry)
-  const recent = isRecent(entry.modified_at, now)
   const rel = relativeTime(entry.modified_at, now)
 
   // Folder secondary line: "N items · 3d ago" (item count only when the server
@@ -34,7 +33,7 @@ export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) 
   if (rel) meta.push(rel)
 
   return (
-    <div className={`ex-row-wrap${selected ? ' is-selected' : ''}`}>
+    <div className={`ex-row-wrap${selected ? ' is-selected' : ''}`} role="listitem">
       <button
         type="button"
         className={`ex-row ex-row-${isDir ? 'dir' : 'file'}`}
@@ -48,7 +47,6 @@ export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) 
         <span className="ex-row-body">
           <span className="ex-row-name-line">
             <span className="ex-row-name">{entry.name}</span>
-            {recent && <span className="ex-recent-dot" title="Changed in the last 24h" />}
           </span>
           <span className="ex-row-meta">{meta.join(' · ')}</span>
         </span>
