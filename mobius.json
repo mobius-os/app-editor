@@ -60,7 +60,8 @@
       "@codemirror/lang-markdown",
       "@lezer/highlight",
       "katex",
-      "pdfjs-dist"
+      "pdfjs-dist",
+      "@openai/apps-sdk-ui/components/Icon"
     ],
     "esm_deps": []
   }
