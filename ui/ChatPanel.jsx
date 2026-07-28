@@ -20,7 +20,11 @@ export function ChatPanel({ chatHeight, onTurnDone, guidance, getContext }) {
   const onTurnDoneRef = useRef(onTurnDone)
   useEffect(() => { onTurnDoneRef.current = onTurnDone }, [onTurnDone])
   const guidanceRef = useRef(guidance)
-  useEffect(() => { guidanceRef.current = guidance }, [guidance])
+  const chatHandleRef = useRef(null)
+  useEffect(() => {
+    guidanceRef.current = guidance
+    chatHandleRef.current?.setGuidance?.(guidance)
+  }, [guidance])
   const getContextRef = useRef(getContext)
   useEffect(() => { getContextRef.current = getContext }, [getContext])
   const systemPrompt = useMemo(() => agentSystemPrompt(), [])
@@ -59,13 +63,19 @@ export function ChatPanel({ chatHeight, onTurnDone, guidance, getContext }) {
     }).then((h) => {
       if (disposed) { h.destroy(); return }
       handle = h
+      chatHandleRef.current = h
+      h.setGuidance?.(guidanceRef.current)
     }).catch((e) => {
       if (disposed) return
       const msg = e.message || 'Could not mount embedded chat.'
       setError(msg)
       emitSignal('error', { message: msg, source: 'chat' })
     })
-    return () => { disposed = true; if (handle) handle.destroy() }
+    return () => {
+      disposed = true
+      if (chatHandleRef.current === handle) chatHandleRef.current = null
+      if (handle) handle.destroy()
+    }
   }, [systemPrompt])
 
   // The whole height goes to the embed — the chat's own composer is pinned at
