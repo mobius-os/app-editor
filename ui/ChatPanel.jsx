@@ -10,7 +10,7 @@ import { emitSignal } from '../storage.js'
 // agent turn → the App re-reads the open file + refreshes the tree node + git.
 // ----------------------------------------------------------------------
 
-export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) {
+export function ChatPanel({ chatHeight, onTurnDone, guidance, getContext }) {
   const mountRef = useRef(null)
   const [error, setError] = useState(null)
   // Keep the latest onTurnDone in a ref so the mount effect does not depend on
@@ -19,8 +19,12 @@ export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) 
   // the chat iframe (killing a streaming turn) every time the user opens a file.
   const onTurnDoneRef = useRef(onTurnDone)
   useEffect(() => { onTurnDoneRef.current = onTurnDone }, [onTurnDone])
-  const quickActionsRef = useRef(quickActions)
-  useEffect(() => { quickActionsRef.current = quickActions }, [quickActions])
+  const guidanceRef = useRef(guidance)
+  const chatHandleRef = useRef(null)
+  useEffect(() => {
+    guidanceRef.current = guidance
+    chatHandleRef.current?.setGuidance?.(guidance)
+  }, [guidance])
   const getContextRef = useRef(getContext)
   useEffect(() => { getContextRef.current = getContext }, [getContext])
   const systemPrompt = useMemo(() => agentSystemPrompt(), [])
@@ -40,7 +44,7 @@ export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) 
       title: 'Editor',
       systemPrompt,
       picker: true,
-      quickActions: quickActionsRef.current,
+      guidance: guidanceRef.current,
       getContext: () => {
         const fn = getContextRef.current
         return fn ? fn() : null
@@ -59,13 +63,19 @@ export function ChatPanel({ chatHeight, onTurnDone, quickActions, getContext }) 
     }).then((h) => {
       if (disposed) { h.destroy(); return }
       handle = h
+      chatHandleRef.current = h
+      h.setGuidance?.(guidanceRef.current)
     }).catch((e) => {
       if (disposed) return
       const msg = e.message || 'Could not mount embedded chat.'
       setError(msg)
       emitSignal('error', { message: msg, source: 'chat' })
     })
-    return () => { disposed = true; if (handle) handle.destroy() }
+    return () => {
+      disposed = true
+      if (chatHandleRef.current === handle) chatHandleRef.current = null
+      if (handle) handle.destroy()
+    }
   }, [systemPrompt])
 
   // The whole height goes to the embed — the chat's own composer is pinned at

@@ -841,15 +841,12 @@ export default function App({ appId, token }) {
     gitSummary: git ? { branch: git.branch, dirty: (git.counts?.staged || 0) + (git.counts?.modified || 0) + (git.counts?.untracked || 0) } : null,
   }), [git])
 
-  const quickActions = useMemo(() => (selectedPath ? [
-    { label: 'Explain this file', prompt: 'Explain what this file does.' },
-    { label: 'Fix issues in this file', prompt: 'Review and fix issues in the currently open file.' },
-    { label: 'What changed here recently?', prompt: 'Summarize what changed recently in this folder.' },
-  ] : [
-    { label: "What's in this folder?", prompt: 'Give me an overview of what is in the current folder.' },
-    { label: 'What changed here recently?', prompt: 'Summarize what changed recently in this folder.' },
-    { label: 'Find the biggest files', prompt: 'What are the largest files under the current folder?' },
-  ]), [selectedPath])
+  // A short informational line for the embedded chat's empty state — what the
+  // agent can do, tuned to whether a file is currently open.
+  const guidance = useMemo(() => (selectedPath
+    ? 'Ask the agent about the open file — explain what it does, review and fix issues, or make a change you describe.'
+    : 'Ask the agent about this project — what a folder holds, what changed recently, or a change you want made across the files.'
+  ), [selectedPath])
 
   const openChat = useCallback(async () => {
     if (chatOpenRef.current) return
@@ -1309,7 +1306,7 @@ export default function App({ appId, token }) {
             <button type="button" className="ex-icon-btn" onClick={closeChat} aria-label="Close chat"><Icon name="x" size={20} /></button>
           </div>
           <div className="ex-chat-sheet-body">
-            <ChatPanel onTurnDone={handleTurnDone} quickActions={quickActions} getContext={getContext} />
+            <ChatPanel onTurnDone={handleTurnDone} guidance={guidance} getContext={getContext} />
           </div>
         </div>
       )}
