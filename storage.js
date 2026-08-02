@@ -162,7 +162,9 @@ export function fsGit(path) {
 // Disk usage of the /data filesystem (statvfs) → { total, used, free, path } in
 // bytes. Returns null when the server doesn't support it (old build → 404) so
 // the status-bar gauge is a pure enhancement, feature-detected. Honest label:
-// this is the HOST /data filesystem, not a Möbius quota.
+// this is the mount holding /data, not a Möbius quota and not the container's
+// root filesystem. Where /data has its own volume, `used` is Möbius's own
+// footprint and `total` is a real ceiling.
 export async function fsDisk() {
   try {
     return await fsJSON('/disk')

@@ -24,7 +24,7 @@ export function BookmarksDrawer({
       </div>
 
       {d && (
-        <div className="ex-drawer-disk" title="The host filesystem backing /data (not a Möbius quota)">
+        <div className="ex-drawer-disk" title="The mount holding /data — not a Möbius quota, and not the container's root filesystem">
           <div className="ex-drawer-disk-top">
             <Icon name="disk" size={15} />
             <span>{formatBytes(d.used)} used</span>
