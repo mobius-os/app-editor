@@ -50,7 +50,7 @@ https://raw.githubusercontent.com/mobius-os/app-editor/main/mobius.json
 ## Project layout
 
 The app is a multi-file module tree (declared in `mobius.json`'s `source_files`;
-the installer fetches each path and esbuild bundles from `index.jsx`):
+the installer fetches each path and Rolldown bundles from `index.jsx`):
 
 | File | Role |
 |------|------|
@@ -78,17 +78,17 @@ Unit tests (pure helpers + the save-state, git-entry-path, and sort/format regre
 npm test
 ```
 
-Compile smoke (verify the JSX bundles cleanly; needs `esbuild` on your `PATH`):
+Compile smoke (verify the JSX bundles cleanly; needs `rolldown` on your `PATH`):
 
 ```bash
-esbuild index.jsx \
-  --bundle --format=esm --jsx=automatic --platform=browser \
-  --external:react --external:react/jsx-runtime --external:react-dom \
-  --external:@codemirror/state --external:@codemirror/view \
-  --external:@codemirror/commands --external:@codemirror/language \
-  --external:@codemirror/lang-markdown --external:@lezer/highlight \
-  --external:katex \
-  --outfile=/tmp/editor-smoke.js
+rolldown index.jsx \
+  --format esm --platform browser \
+  --external react,react/jsx-runtime,react-dom \
+  --external @codemirror/state,@codemirror/view \
+  --external @codemirror/commands,@codemirror/language \
+  --external @codemirror/lang-markdown,@lezer/highlight \
+  --external katex \
+  --file /tmp/editor-smoke.js
 ```
 
 Expected: a clean bundle (~145 KB), exit 0.
