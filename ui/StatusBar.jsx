@@ -9,7 +9,10 @@ import { formatBytes, diskUsage } from '../paths.js'
 // "how full is my server" signal — shown only when the endpoint is available.
 // ----------------------------------------------------------------------
 export function StatusBar({ census, disk, filterActive }) {
-  const { folders = 0, files = 0, bytes = 0, protectedCount = 0, capped = false, matched = null } = census || {}
+  const {
+    folders = 0, files = 0, bytes = 0, protectedCount = 0,
+    hiddenCount = 0, capped = false, matched = null,
+  } = census || {}
   const parts = []
   if (filterActive && matched != null) {
     parts.push(`${matched} match${matched === 1 ? '' : 'es'}`)
@@ -19,6 +22,7 @@ export function StatusBar({ census, disk, filterActive }) {
     if (files > 0) parts.push(`${formatBytes(bytes)} here`)
   }
   if (protectedCount > 0) parts.push(`${protectedCount} protected`)
+  if (hiddenCount > 0) parts.push(`${hiddenCount} hidden`)
   if (capped) parts.push('showing first 10000')
 
   const d = diskUsage(disk)

@@ -10,8 +10,8 @@ import {
 // home for the single destructive action (delete). Everything the FS API knows
 // about an item in one place: full path, kind + MIME, exact size (or immediate
 // item count for a folder), modified time (absolute + relative), whether the
-// owner can edit it or it is platform-managed, text vs binary, and git repo
-// status. A bottom-sheet on phone, a centered card on desktop; the iframe
+// owner can edit it or it is platform-managed, and text vs binary. A
+// bottom-sheet on phone, a centered card on desktop; the iframe
 // blocks native dialogs so this is an in-app modal like the others.
 //
 // Honest about limits: a folder shows its IMMEDIATE item count (one listing
@@ -80,7 +80,7 @@ export function PropertiesSheet({
               <span className="ex-copy-path-icon">{copied ? <Icon name="check" size={14} /> : <Icon name="file" size={14} />}</span>
             </button>
           </Row>
-          <Row label="Kind">{isDir ? (entry.is_git_repo ? 'Folder · git repository' : 'Folder') : kindLabel(entry.name)}</Row>
+          <Row label="Kind">{isDir ? 'Folder' : kindLabel(entry.name)}</Row>
           {isDir
             ? <Row label="Contents">{itemCount != null ? `${itemCount >= 10000 ? '10000+' : itemCount} item${itemCount === 1 ? '' : 's'} (top level)` : (loading ? 'counting…' : '—')}</Row>
             : <Row label="Size">{typeof size === 'number' ? `${formatBytes(size)}  ·  ${size.toLocaleString()} bytes` : '—'}</Row>}
@@ -99,7 +99,7 @@ export function PropertiesSheet({
         </div>
 
         <div className="ex-sheet-actions">
-          <button type="button" className="ex-btn" onClick={() => onOpen(entry)}>
+          <button type="button" className="ex-btn ex-btn-primary" onClick={() => onOpen(entry)}>
             {isDir ? 'Open folder' : 'Open'}
           </button>
           <button type="button" className="ex-btn" onClick={() => onAskAgent(entry)}>Ask agent</button>

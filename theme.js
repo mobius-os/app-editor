@@ -5,9 +5,9 @@
 // safe-area insets.
 //
 // Naming: NEW structural UI uses the `ex-` prefix (explorer). The components
-// carried over verbatim — NameModal / ConfirmModal (ed-modal/ed-btn), CodeEditor
-// (ed-cm-host), ImagePreview (ed-img/ed-note), GitPanel (ed-git/ed-chip),
-// ChatPanel (ed-chat) — keep their `ed-` classes untouched, so shared primitives
+// NameModal / ConfirmModal (ed-modal/ed-btn), CodeEditor
+// (ed-cm-host), ImagePreview (ed-img/ed-note), and ChatPanel (ed-chat) — keep
+// their `ed-` classes untouched, so shared primitives
 // are grouped selectors (`.ed-btn, .ex-btn { … }`) rather than duplicated.
 // ----------------------------------------------------------------------
 export const CSS = `
@@ -23,19 +23,19 @@ export const CSS = `
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
+.ex-root, .ex-root *, .ex-root *::before, .ex-root *::after { box-sizing: border-box; }
+
 .ex-root {
   position: relative;
   display: flex; flex-direction: column;
   height: 100%; width: 100%; max-width: 100%;
   overflow: hidden;
-  background: var(--bg); color: var(--text); font-family: var(--font);
+  background: color-mix(in srgb, var(--bg) 96%, var(--surface) 4%);
+  color: var(--text); font-family: var(--font);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
-  /* Git-signal colors: structure stays monochrome/accent; hue is reserved for
-     source-control meaning only. These fixed tones keep each state legible in
-     both explicit and system-selected themes. */
   --ed-amber: #efb64a;
   --ed-blue: #75b6ff;
-  --ed-green: #4fd1a2;
   --ed-code-comment: #7f8c98;
   --ed-code-string: #9dd6a5;
   --ed-code-keyword: #c4a7ff;
@@ -45,7 +45,7 @@ export const CSS = `
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .ex-root {
-    --ed-amber: #714600; --ed-blue: #174f91; --ed-green: #066b4d;
+    --ed-amber: #714600; --ed-blue: #174f91;
     --ed-code-comment: #64727d; --ed-code-string: #27733a;
     --ed-code-keyword: #6941b8; --ed-code-literal: #116a91;
     --ed-code-number: #9a4e12; --ed-code-tag: #a52c3f;
@@ -54,30 +54,29 @@ export const CSS = `
 :root[data-theme="light"] .ex-root {
   --ed-amber: #714600;
   --ed-blue: #174f91;
-  --ed-green: #066b4d;
   --ed-code-comment: #64727d; --ed-code-string: #27733a;
   --ed-code-keyword: #6941b8; --ed-code-literal: #116a91;
   --ed-code-number: #9a4e12; --ed-code-tag: #a52c3f;
 }
 
 /* mobius-ui:Scrollskin v2 — hidden scrollbar, content stays scrollable. */
-.ex-scroll, .ex-scroll-x, .ex-git-body, .ed-git-body, .ex-view-scroll {
+.ex-scroll, .ex-scroll-x, .ex-view-scroll {
   scrollbar-width: none; -ms-overflow-style: none;
 }
 .ex-scroll::-webkit-scrollbar, .ex-scroll-x::-webkit-scrollbar,
-.ed-git-body::-webkit-scrollbar, .ex-view-scroll::-webkit-scrollbar,
+.ex-view-scroll::-webkit-scrollbar,
 .ed-cm-host .cm-scroller::-webkit-scrollbar {
   display: none; width: 0; height: 0;
 }
 /* /mobius-ui:Scrollskin */
 
-/* mobius-ui:Button v1 — shared by the reused modals (ed-) and new UI (ex-). */
+/* mobius-ui:Button v1 — shared by the modals (ed-) and browser UI (ex-). */
 .ed-btn, .ex-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: 44px; padding: 10px 16px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
   font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
-  transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ed-btn:active, .ex-btn:active { transform: scale(0.97); }
@@ -100,18 +99,18 @@ export const CSS = `
 /* /mobius-ui:Spinner */
 
 .ex-icon-btn {
-  flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 9px;
+  flex: 0 0 auto; width: 44px; height: 44px; padding: 0; border-radius: 10px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; background: transparent; color: var(--text); cursor: pointer;
-  transition: color 0.12s, background 0.12s, transform 0.08s;
+  border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease, transform 0.08s ease;
   -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
 }
-@media (hover: hover) { .ex-icon-btn:hover { background: var(--surface); } }
-.ex-icon-btn:active { background: var(--surface); transform: scale(0.92); }
+@media (hover: hover) { .ex-icon-btn:hover { color: var(--text); background: var(--surface); border-color: var(--border); } }
+.ex-icon-btn:active { color: var(--text); background: var(--surface); transform: scale(0.94); }
 .ex-icon-btn:focus:not(:focus-visible) { outline: none; }
-.ex-icon-btn.is-active { color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ex-icon-btn.is-active { color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); border-color: color-mix(in srgb, var(--accent) 34%, var(--border)); }
 .ex-chat-toggle.is-active { color: var(--accent); }
-.ex-brand-icon { display: block; width: 34px; height: 34px; object-fit: contain; }
+.ex-brand-icon { display: block; width: 32px; height: 32px; object-fit: contain; }
 .ex-drawer-toggle { width: 44px; height: 44px; }
 .ex-brand-fallback {
   width: 34px; height: 34px; align-items: center; justify-content: center;
@@ -125,49 +124,58 @@ export const CSS = `
 
 /* ---- App bar (drawer toggle · breadcrumb · filter · view · chat) ---- */
 .ex-appbar {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
-  min-height: 52px;
-  padding: max(8px, env(safe-area-inset-top), var(--mobius-safe-top, 0px)) 8px 8px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px; min-height: 56px;
+  padding: max(6px, env(safe-area-inset-top), var(--mobius-safe-top, 0px)) 10px 6px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--bg) 6%);
+  border-bottom: 1px solid var(--border);
 }
-.ex-appbar-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.ex-appbar-actions {
+  display: flex; align-items: center; gap: 1px; flex: 0 0 auto; padding: 2px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: color-mix(in srgb, var(--surface2, var(--bg)) 72%, transparent);
+}
+.ex-appbar-actions .ex-icon-btn { width: 40px; height: 40px; }
 
 /* ---- Breadcrumb / location bar ---- */
 .ex-crumbs {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px;
-  overflow-x: auto; white-space: nowrap; padding: 2px 2px;
+  overflow-x: auto; white-space: nowrap; padding: 2px 4px;
   -webkit-overflow-scrolling: touch;
 }
 .ex-crumb-group { display: inline-flex; align-items: center; flex: 0 0 auto; }
 .ex-crumb {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px;
   min-height: 44px; padding: 6px 8px; border-radius: 8px; border: 0; background: transparent;
-  color: var(--muted); font-family: var(--font); font-size: 14px; font-weight: 600;
+  color: var(--muted); font-family: var(--font); font-size: 13.5px; font-weight: 580;
   cursor: pointer; white-space: nowrap; -webkit-tap-highlight-color: transparent;
   transition: background 0.12s, color 0.12s;
 }
 @media (hover: hover) { .ex-crumb:hover { background: var(--surface2, var(--bg)); color: var(--text); } }
-.ex-crumb.is-current { color: var(--text); font-weight: 750; cursor: default; padding-left: 6px; }
+.ex-crumb.is-current { color: var(--text); font-weight: 720; cursor: default; padding-left: 6px; }
 .ex-crumb-home { display: inline-flex; align-items: center; gap: 4px; }
 .ex-crumb-home-text { font-size: 13px; }
 .ex-crumb-sep { flex: 0 0 auto; color: color-mix(in srgb, var(--muted) 60%, transparent); }
 
 /* ---- Folder tabs ---- */
 .ex-tabs {
-  flex: 0 0 auto; display: flex; align-items: stretch; gap: 4px;
-  padding: 5px 8px; background: var(--surface); border-bottom: 1px solid var(--border);
+  flex: 0 0 auto; display: flex; align-items: stretch; gap: 3px;
+  padding: 5px 10px 6px; background: color-mix(in srgb, var(--surface) 94%, var(--bg) 6%);
+  border-bottom: 1px solid var(--border);
   overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch;
 }
 .ex-tab {
   flex: 0 0 auto; display: inline-flex; align-items: stretch; border-radius: 9px;
-  border: 1px solid var(--border); background: var(--surface2, var(--bg)); overflow: hidden;
-  max-width: 190px;
+  border: 1px solid transparent; background: transparent; overflow: hidden; max-width: 190px;
 }
-.ex-tab.is-active { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ex-tab.is-active {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: var(--accent-dim, color-mix(in srgb, var(--accent) 10%, transparent));
+}
+@media (hover: hover) { .ex-tab:not(.is-active):hover { border-color: var(--border); background: var(--surface2, var(--bg)); } }
 .ex-tab-btn {
   flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px;
   min-height: 44px; padding: 4px 12px; border: 0; background: transparent;
-  color: var(--muted); font-family: var(--font); font-size: 13px; font-weight: 600;
+  color: var(--muted); font-family: var(--font); font-size: 12.5px; font-weight: 620;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 .ex-tab.is-active .ex-tab-btn { color: var(--text); }
@@ -180,16 +188,16 @@ export const CSS = `
 @media (hover: hover) { .ex-tab-close:hover { opacity: 1; color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); } }
 .ex-tab-new {
   flex: 0 0 auto; width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px dashed var(--border); border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer;
+  border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-@media (hover: hover) { .ex-tab-new:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); } }
+@media (hover: hover) { .ex-tab-new:hover { color: var(--accent); border-color: var(--border); background: var(--surface2, var(--bg)); } }
 .ex-tab-new:active { transform: scale(0.94); }
 
 /* ---- Filter row ---- */
 .ex-filter-row {
   flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; background: var(--surface2, var(--surface)); border-bottom: 1px solid var(--border);
+  padding: 7px 14px; background: var(--surface2, var(--surface)); border-bottom: 1px solid var(--border);
 }
 .ex-filter-icon { color: var(--muted); flex: 0 0 auto; }
 .ex-filter-input {
@@ -212,14 +220,15 @@ export const CSS = `
 .ex-drawer {
   position: absolute; top: 0; left: 0; bottom: 0; z-index: 31;
   width: 82%; max-width: 300px; display: flex; flex-direction: column;
-  background: var(--surface); border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 96%, var(--bg) 4%); border-right: 1px solid var(--border);
+  box-shadow: 12px 0 28px rgba(0,0,0,0.18);
   transform: translateX(-102%); transition: transform 0.22s ease;
 }
 .ex-drawer.is-open { transform: translateX(0); }
 .ex-drawer--dragging { transition: none; }
 
 .ex-main { flex: 1; min-width: 0; min-height: 0; display: flex; background: var(--bg); }
-.ex-browser { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.ex-browser { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface); }
 .ex-detail { flex: 1; min-width: 0; min-height: 0; display: none; }
 .ex-list-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
@@ -231,20 +240,23 @@ export const CSS = `
 }
 
 /* ---- Detail list rows ---- */
-.ex-list { padding: 4px 6px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px)); }
-.ex-row-wrap { display: flex; align-items: stretch; border-radius: 10px; }
-.ex-row-wrap.is-selected { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ex-list { padding: 7px 8px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px)); }
+.ex-row-wrap { display: flex; align-items: stretch; border-radius: 9px; margin: 1px 0; }
+.ex-row-wrap.is-selected {
+  background: var(--accent-dim, color-mix(in srgb, var(--accent) 10%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, var(--border));
+}
 .ex-row {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
-  min-height: 52px; padding: 7px 8px; text-align: left;
-  background: transparent; border: 0; border-radius: 10px; color: var(--text);
+  min-height: 54px; padding: 7px 9px; text-align: left;
+  background: transparent; border: 0; border-radius: 9px; color: var(--text);
   font-family: var(--font); cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   transition: background 0.12s ease;
 }
-@media (hover: hover) { .ex-row:hover { background: var(--surface); } }
+@media (hover: hover) { .ex-row:hover { background: var(--surface2, var(--bg)); } }
 .ex-row:active { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
-.ex-row-wrap.is-selected .ex-row-name { color: var(--accent); font-weight: 700; }
-.ex-row-icon { flex: 0 0 auto; width: 26px; display: flex; align-items: center; justify-content: center; }
+.ex-row-wrap.is-selected .ex-row-name { color: var(--text); font-weight: 680; }
+.ex-row-icon { flex: 0 0 auto; width: 28px; display: flex; align-items: center; justify-content: center; }
 /* File/folder type icons. Shape carries the type; a restrained tone carries
    the category ("hue for meaning"): folders + code in accent, media in blue,
    pdf/archive in amber, everything else calm muted. */
@@ -255,51 +267,32 @@ export const CSS = `
 .ex-glyph--muted { color: var(--muted); }
 .ex-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .ex-row-name-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ex-row-name { min-width: 0; font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-row-dir .ex-row-name { font-weight: 650; }
-.ex-row-meta { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-row-name { min-width: 0; font-size: 14px; line-height: 1.25; font-weight: 580; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-row-dir .ex-row-name { font-weight: 640; }
+.ex-row-meta { font-size: 11px; line-height: 1.35; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-row-chevron { flex: 0 0 auto; color: color-mix(in srgb, var(--muted) 70%, transparent); }
-.ex-badge-git {
-  flex: 0 0 auto; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 700;
-  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
-}
-.ex-badge-git--cell { position: absolute; top: 6px; left: 6px; }
-.ex-cell-change { max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; }
 .ex-row-info {
   flex: 0 0 auto; width: 44px; min-height: 44px; padding: 0;
   display: flex; align-items: center; justify-content: center;
   background: transparent; border: 0; border-radius: 8px; color: var(--muted);
-  cursor: pointer; opacity: 0.55; transition: opacity 0.12s, color 0.12s, background 0.12s;
+  cursor: pointer; opacity: 0.44; transition: opacity 0.12s, color 0.12s, background 0.12s;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .ex-row-wrap:hover .ex-row-info, .ex-row-wrap:focus-within .ex-row-info, .ex-row-info:focus-visible { opacity: 1; }
 @media (hover: hover) { .ex-row-info:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); } }
 @media (hover: none) { .ex-row-info { opacity: 0.8; } }
 
-/* change chip — shared tones with GitPanel's ed-chip */
-.ed-chip, .ex-chip {
-  flex: 0 0 auto; padding: 2px 8px; border-radius: 999px;
-  font-size: 10.5px; font-weight: 700; white-space: nowrap;
-  background: color-mix(in srgb, var(--chip) 16%, transparent); color: var(--chip);
-}
-.ed-chip.tone-staged, .ex-chip.tone-staged { --chip: var(--ed-green); }
-.ed-chip.tone-modified, .ex-chip.tone-modified { --chip: var(--ed-amber); }
-.ed-chip.tone-untracked, .ex-chip.tone-untracked { --chip: var(--ed-blue); }
-.ed-chip.tone-renamed, .ex-chip.tone-renamed { --chip: var(--ed-blue); }
-.ed-chip.tone-deleted, .ex-chip.tone-deleted { --chip: var(--danger); }
-.ed-chip.tone-renamed, .ex-chip.tone-renamed { --chip: var(--ed-blue); }
-
 /* ---- Grid view ---- */
 .ex-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
-  padding: 10px 10px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 10px;
+  padding: 12px 12px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
 }
 .ex-cell-wrap { position: relative; border-radius: 12px; }
 .ex-cell {
   width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 12px 6px 10px; border: 1px solid var(--border); border-radius: 12px;
+  padding: 13px 8px 11px; border: 1px solid var(--border); border-radius: 11px;
   background: var(--surface); color: var(--text); cursor: pointer; text-align: center;
-  -webkit-tap-highlight-color: transparent; transition: border-color 0.12s, background 0.12s;
+  -webkit-tap-highlight-color: transparent; transition: border-color 0.14s ease, background 0.14s ease;
 }
 @media (hover: hover) { .ex-cell:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); } }
 .ex-cell-wrap.is-selected .ex-cell { border-color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 10%, transparent)); }
@@ -325,9 +318,9 @@ export const CSS = `
 /* ---- Status bar ---- */
 .ex-status {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  min-height: 32px; padding: 6px 14px max(6px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
-  border-top: 1px solid var(--border); background: var(--surface);
-  font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+  min-height: 34px; padding: 6px 14px max(6px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px));
+  border-top: 1px solid var(--border); background: var(--surface2, var(--surface));
+  font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .ex-status-census { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-status-disk { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
@@ -337,31 +330,34 @@ export const CSS = `
 .ex-disk-label { white-space: nowrap; }
 
 /* ---- Drawer content ---- */
-.ex-drawer-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px)); }
-.ex-drawer-head { padding: 10px 8px 6px; display: flex; align-items: baseline; gap: 8px; }
-.ex-drawer-title { font-size: 15px; font-weight: 750; }
+.ex-drawer-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 10px max(20px, env(safe-area-inset-bottom), var(--mobius-safe-bottom, 0px)); }
+.ex-drawer-head { padding: 12px 10px 8px; display: flex; align-items: baseline; gap: 8px; }
+.ex-drawer-title { font-size: 16px; font-weight: 720; letter-spacing: -0.012em; }
 .ex-drawer-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
-.ex-drawer-disk { margin: 4px 6px 8px; padding: 10px; border-radius: 10px; background: var(--surface2, var(--bg)); border: 1px solid var(--border); }
+.ex-drawer-disk { margin: 3px 5px 8px; padding: 11px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
 .ex-drawer-disk-top { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); margin-bottom: 7px; }
 .ex-drawer-disk-top svg { color: var(--muted); }
 .ex-drawer-disk-free { margin-left: auto; color: var(--muted); }
 .ex-drawer-disk .ex-disk-track { width: 100%; height: 7px; }
-.ex-drawer-section-label { padding: 10px 8px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.ex-drawer-section-label { padding: 12px 9px 5px; font-size: 10px; font-weight: 720; letter-spacing: 0.055em; text-transform: uppercase; color: var(--muted); }
 .ex-shortcut-wrap { display: flex; align-items: stretch; border-radius: 10px; }
 .ex-shortcut {
   flex: 1; width: 100%; min-width: 0; display: flex; align-items: center; gap: 11px;
-  min-height: 46px; padding: 7px 10px; text-align: left;
-  background: transparent; border: 0; border-radius: 10px; color: var(--text);
+  min-height: 46px; padding: 7px 9px; text-align: left;
+  background: transparent; border: 1px solid transparent; border-radius: 9px; color: var(--text);
   cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.12s;
 }
 @media (hover: hover) { .ex-shortcut:hover { background: var(--surface2, var(--bg)); } }
 .ex-shortcut:active { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
-.ex-shortcut.is-active, .ex-shortcut-wrap.is-active { background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
+.ex-shortcut.is-active, .ex-shortcut-wrap.is-active {
+  background: var(--accent-dim, color-mix(in srgb, var(--accent) 10%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .ex-shortcut.is-active .ex-shortcut-label { color: var(--text); }
 .ex-shortcut-icon { flex: 0 0 auto; width: 24px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .ex-shortcut.is-active .ex-shortcut-icon { color: var(--accent); }
 .ex-shortcut-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ex-shortcut-label { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-shortcut-label { font-size: 13.5px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-shortcut-hint { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-shortcut--recent .ex-shortcut-icon { opacity: 0.8; }
 .ex-shortcut-unpin { flex: 0 0 auto; width: 40px; display: flex; align-items: center; justify-content: center; background: transparent; border: 0; border-radius: 8px; color: var(--muted); cursor: pointer; opacity: 0.6; }
@@ -407,7 +403,7 @@ export const CSS = `
 .ex-sheet {
   width: 100%; max-width: 460px; max-height: 90%; display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.34); overflow: hidden;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.34); overflow: hidden;
 }
 .ex-sheet-head { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 14px 12px 12px 16px; border-bottom: 1px solid var(--border); }
 .ex-sheet-icon { flex: 0 0 auto; display: flex; align-items: center; }
@@ -432,16 +428,16 @@ export const CSS = `
 /* ---- File viewer / editor ---- */
 .ex-view { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
 .ex-view-head {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 48px;
-  padding: max(8px, env(safe-area-inset-top), var(--mobius-safe-top, 0px)) 10px 8px;
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 56px;
+  padding: max(6px, env(safe-area-inset-top), var(--mobius-safe-top, 0px)) 12px 6px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.ex-view-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-view-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 680; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ex-view-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .ex-view-alert { flex: 0 0 auto; margin: 8px 10px 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 12%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border)); color: var(--text); font-size: 12.5px; line-height: 1.4; }
 .ex-view-alert.is-notice { background: color-mix(in srgb, var(--ed-amber) 14%, transparent); border-color: color-mix(in srgb, var(--ed-amber) 40%, var(--border)); }
 .ex-view-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ex-view-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--bg) 88%, #000 12%); }
+.ex-view-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--bg) 96%, var(--surface) 4%); }
 .ex-view-banner { flex: 0 0 auto; padding: 7px 14px; font-size: 12px; color: var(--muted); background: var(--surface2, var(--surface)); border-bottom: 1px solid var(--border); }
 .ex-view-scroll { flex: 1; overflow: auto; padding: 14px 16px; overscroll-behavior: contain; }
 .ex-view-note { display: flex; align-items: center; gap: 10px; padding: 20px 16px; color: var(--muted); font-size: 14px; line-height: 1.5; }
@@ -449,10 +445,10 @@ export const CSS = `
 .ex-detail-empty { color: var(--muted); }
 
 /* ---- Empty states ---- */
-.ex-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; max-width: 420px; margin: auto; padding: 40px 24px; color: var(--muted); }
-.ex-empty-mark { width: 58px; height: 58px; margin-bottom: 6px; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
-.ex-empty-title { font-size: 16px; font-weight: 700; color: var(--text); }
-.ex-empty-text { margin: 0; font-size: 13.5px; line-height: 1.55; }
+.ex-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 7px; max-width: 380px; margin: auto; padding: 40px 24px; color: var(--muted); }
+.ex-empty-mark { width: 52px; height: 52px; margin-bottom: 7px; border-radius: 15px; display: flex; align-items: center; justify-content: center; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border)); }
+.ex-empty-title { font-size: 15px; font-weight: 680; color: var(--text); }
+.ex-empty-text { margin: 0; max-width: 36ch; font-size: 13px; line-height: 1.55; }
 .ex-list-note { display: flex; align-items: center; gap: 8px; padding: 16px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
 .ex-list-note.is-error { color: var(--danger); }
 .ex-retry { margin-left: 6px; padding: 6px 12px; min-height: 40px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2, var(--surface)); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -497,32 +493,6 @@ export const CSS = `
 .ex-media-pdf { width: 100%; min-height: 70vh; border: 0; background: var(--surface2, var(--bg)); }
 .ed-note { padding: 16px; color: var(--muted); font-size: 13px; }
 
-/* ---- Reused: GitPanel (source control) ---- */
-.ed-git { flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--surface); }
-.ed-git-bar { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 52px; padding: 8px 12px; text-align: left; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); font-size: 12.5px; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-.ed-git-bar.is-quiet { color: var(--muted); cursor: default; min-height: 32px; font-size: 12px; }
-.ed-git-mark { flex: 0 0 auto; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; color: var(--accent); background: var(--accent-dim, color-mix(in srgb, var(--accent) 12%, transparent)); }
-.ed-git-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ed-git-title { font-size: 12.5px; font-weight: 700; }
-.ed-git-branch { font-size: 10.5px; font-weight: 550; font-family: var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ed-git-track { color: var(--muted); font-variant-numeric: tabular-nums; }
-.ed-git-total { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--ed-amber); font-variant-numeric: tabular-nums; }
-.ed-git-total.is-clean { color: var(--muted); font-weight: 600; }
-.ed-git-chevron { flex: 0 0 auto; color: var(--muted); transition: transform 0.18s ease; transform: rotate(-90deg); }
-.ed-git-chevron.is-open { transform: rotate(0); }
-.ed-git-body { padding: 0 10px 12px; max-height: 38vh; overflow-y: auto; overscroll-behavior: contain; }
-.ed-git-group { margin-top: 8px; }
-.ed-git-group-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px 5px; font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
-.ed-git-file { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 44px; padding: 6px 8px; text-align: left; border-radius: 8px; background: transparent; border: 0; color: var(--text); cursor: pointer; font-family: var(--font); transition: background 0.12s ease; }
-@media (hover: hover) { .ed-git-file:hover { background: var(--surface2, var(--bg)); } }
-.ed-git-file:disabled { cursor: default; opacity: 0.72; }
-.ed-git-file-icon { flex: 0 0 auto; width: 22px; display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
-.ed-git-file-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ed-git-file-name { font-size: 12.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ed-git-file-dir { font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ed-git-more { margin: 2px 0 4px; font-size: 11px; color: var(--muted); font-style: italic; }
-.ed-git-help { padding: 9px 8px 0; font-size: 10.5px; line-height: 1.4; color: var(--muted); }
-
 /* ---- Reused: modals (NameModal / ConfirmModal) ---- */
 .ed-modal { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 18px 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.32); margin: auto; }
 .ed-modal-title { font-size: 15px; font-weight: 700; }
@@ -538,10 +508,17 @@ export const CSS = `
 /* ---- Desktop master-detail (≥760px) ---- */
 @media (min-width: 760px) {
   .ex-scrim { display: none; }
-  .ex-drawer { position: relative; transform: none; flex: 0 0 250px; max-width: 250px; z-index: 1; }
+  .ex-drawer { position: relative; transform: none; flex: 0 0 224px; max-width: 224px; z-index: 1; box-shadow: none; }
   .ex-drawer-toggle { display: none; }
-  .ex-browser { flex: 0 0 clamp(320px, 42%, 480px); border-right: 1px solid var(--border); }
+  .ex-browser { flex: 0 0 clamp(320px, 38%, 480px); border-right: 1px solid var(--border); }
   .ex-detail { display: flex; }
+}
+
+@media (max-width: 640px) {
+  .ex-appbar { padding-inline: 6px; }
+  .ex-appbar-actions { padding: 0; border-color: transparent; background: transparent; }
+  .ex-appbar-actions .ex-icon-btn { width: 44px; height: 44px; }
+  .ex-tabs { padding-inline: 7px; }
 }
 
 /* mobius-ui:ReducedMotion v1 */

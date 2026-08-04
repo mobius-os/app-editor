@@ -7,7 +7,7 @@ import { emitSignal } from '../storage.js'
 // this app does not duplicate SSE handling, composer state, provider controls,
 // or persistence. window.mobius.chat owns the whole lifecycle (create-once via
 // persist, re-apply the system prompt on resume). onTurnDone fires after each
-// agent turn → the App re-reads the open file + refreshes the tree node + git.
+// agent turn → the App re-reads the open file + refreshes the tree node.
 // ----------------------------------------------------------------------
 
 export function ChatPanel({ chatHeight, onTurnDone, guidance, getContext }) {

@@ -18,25 +18,25 @@
 // Redesign shape (was: tree drawer + editor + resizable chat): a DRILL-IN file
 // browser is the home surface — a tappable breadcrumb, a dense detail list with
 // sort/filter/grid, a bookmarks drawer of server locations, a Properties sheet,
-// a status-bar census + disk gauge, and a git banner on repo-enter. Editing and
-// the agent chat DEMOTE to on-demand surfaces so the whole screen goes to
+// a status-bar census + disk gauge. Editing and the agent chat DEMOTE to
+// on-demand surfaces so the whole screen goes to
 // browsing/inspection. The FS is huge, so a directory is fetched one level at a
-// time (paginated, capped) and cached; Back and breadcrumb jumps are instant.
+// time (paginated, capped) and cached; revisits and breadcrumb jumps are instant.
 import {
   useState, useEffect, useCallback, useMemo, useRef,
 } from 'react'
 import {
   DESKTOP_BREAKPOINT, LISTING_PAGE_CAP, LISTING_ENTRY_CAP,
-  SHORTCUTS, DEFAULT_PREFS, VIEW_LIST, VIEW_GRID, TABS_MAX, FOCUSABLE_SELECTOR,
+  SHORTCUTS, START_PATH, DEFAULT_PREFS, VIEW_LIST, VIEW_GRID, TABS_MAX, FOCUSABLE_SELECTOR,
 } from './constants.js'
 import { CSS } from './theme.js'
 import {
-  fsDelete, fsGit, fsMeta, fsReadText, fsReadHead, fsTree, fsWrite, fsDisk, fsDu,
+  fsDelete, fsMeta, fsReadText, fsReadHead, fsTree, fsWrite, fsDisk, fsDu,
   configureFilesystemToken, loadPrefs, savePrefs, emitSignal, useOnline,
 } from './storage.js'
 import {
   baseName, dirName, parentDir, extOf, bufferDirtyAfterSave,
-  isKeepMarker, isValidLeafName, joinPath,
+  filterVisibleEntries, isKeepMarker, isValidLeafName, joinPath,
   sortEntries, pushRecent,
 } from './paths.js'
 import { Icon } from './ui/Icons.jsx'
@@ -49,30 +49,10 @@ import { OverflowMenu } from './ui/OverflowMenu.jsx'
 import { BookmarksDrawer } from './ui/BookmarksDrawer.jsx'
 import { PropertiesSheet } from './ui/PropertiesSheet.jsx'
 import { FileViewer } from './ui/FileViewer.jsx'
-import { GitPanel } from './ui/GitPanel.jsx'
 import { ChatPanel } from './ui/ChatPanel.jsx'
 import { ChatBubbleIcon } from './ui/ChatBubbleIcon.jsx'
 import { NameModal } from './ui/NameModal.jsx'
 import { ConfirmModal } from './ui/ConfirmModal.jsx'
-
-// Map a git status into a semantic change chip for an inline list row. Working-
-// tree modification wins over a staged one (it's what the owner most needs to
-// see), untracked is its own tone. Mirrors GitPanel's Hermex color map.
-function buildChangeMap(git) {
-  const map = {}
-  if (!git) return map
-  const root = git.repo_root || ''
-  const put = (p, chip) => { map[root ? `${root}/${p}` : p] = chip }
-  for (const it of git.staged || []) put(it.path, { tone: 'staged', label: 'Staged' })
-  for (const it of git.modified || []) {
-    const path = root ? `${root}/${it.path}` : it.path
-    put(it.path, map[path]
-      ? { tone: 'modified', label: 'Staged + Modified' }
-      : { tone: 'modified', label: 'Modified' })
-  }
-  for (const it of git.untracked || []) put(it.path.replace(/\/+$/, ''), { tone: 'untracked', label: 'New' })
-  return map
-}
 
 export default function App({ appId, token }) {
   // Configure before hooks/effects can schedule any filesystem work. Each app
@@ -96,7 +76,7 @@ export default function App({ appId, token }) {
     return () => { mq.removeEventListener ? mq.removeEventListener('change', on) : mq.removeListener(on) }
   }, [])
 
-  // --- Prefs (view, sort, folders-first, bookmarks, recents, lastPath) ---
+  // --- Prefs (view, sort, folders-first, hidden files, bookmarks, recents) ---
   const [prefs, setPrefs] = useState(DEFAULT_PREFS)
   const prefsLoadedRef = useRef(false)
 
@@ -115,13 +95,13 @@ export default function App({ appId, token }) {
   // is the no-dual-pane way to compare or hop between two folders.
   const tabSeqRef = useRef(1)
   const newTabId = () => `t${tabSeqRef.current++}`
-  const [tabs, setTabs] = useState(() => [{ id: 't0', path: '' }])
+  const [tabs, setTabs] = useState(() => [{ id: 't0', path: START_PATH }])
   const [activeTabId, setActiveTabId] = useState('t0')
   const activeTabIdRef = useRef('t0')
   useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
   const activeTab = tabs.find((t) => t.id === activeTabId) || tabs[0]
   const cwd = activeTab ? activeTab.path : ''
-  const cwdRef = useRef('')
+  const cwdRef = useRef(START_PATH)
   useEffect(() => { cwdRef.current = cwd }, [cwd])
 
   // --- Disk gauge (feature-detected; null when the server lacks /disk) ---
@@ -131,14 +111,7 @@ export default function App({ appId, token }) {
   const [filter, setFilter] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
 
-  // --- Git for the current directory's repo ---
-  const [git, setGit] = useState(null)
-  const [gitError, setGitError] = useState(null)
-  const [gitLoading, setGitLoading] = useState(false)
-  const [gitOpen, setGitOpen] = useState(false)
-  const gitAutoOpenedRef = useRef(new Set())
-
-  // --- Open-file / editor state (reused verbatim from the prior Editor) ---
+  // --- Open-file / editor state ---
   const [selectedPath, setSelectedPath] = useState(null)
   const [meta, setMeta] = useState(null)
   const [content, setContent] = useState('')
@@ -187,7 +160,7 @@ export default function App({ appId, token }) {
   const chatOpenRef = useRef(false)
   useEffect(() => { chatOpenRef.current = chatOpen }, [chatOpen])
 
-  // --- Create / delete / switch / overwrite modals (reused) ---
+  // --- Create / delete / switch / overwrite modals ---
   const [createModal, setCreateModal] = useState(null)
   const [createError, setCreateError] = useState(null)
   const [creating, setCreating] = useState(false)
@@ -296,57 +269,28 @@ export default function App({ appId, token }) {
     }
   }, [fetchDir])
 
-  // --- Git for the current directory ---
-  const loadGit = useCallback(async (forDir) => {
-    setGitLoading(true)
-    try {
-      const g = await fsGit(forDir || '')
-      if (cwdRef.current !== forDir) return
-      const counts = g.counts || {}
-      const hasChanges = (counts.staged || 0) + (counts.modified || 0) + (counts.untracked || 0) > 0
-      const repoKey = g.repo_root || '.'
-      // Reveal a dirty repository only on its first encounter this session.
-      // Once the owner collapses it, later status refreshes never override that
-      // explicit choice.
-      if (hasChanges && !gitAutoOpenedRef.current.has(repoKey)) {
-        gitAutoOpenedRef.current.add(repoKey)
-        setGitOpen(true)
-      }
-      setGit(g); setGitError(null)
-    } catch (e) {
-      if (cwdRef.current !== forDir) return
-      // 404 = no repo here (expected on every non-repo folder); not an fs_error.
-      setGit(null); setGitError(e)
-    } finally {
-      if (cwdRef.current === forDir) setGitLoading(false)
-    }
-  }, [])
-
   // ----------------------------------------------------------------------
   // Navigation. Set the location, ensure its listing is cached (instant on a
-  // re-visit), refresh git, remember it in recents/lastPath, and close any
-  // transient chrome. The "ascend one level" back surface is reconciled by the
-  // effect below, so navigateTo stays surface-agnostic and is safe to call from
-  // a drill, a breadcrumb jump, a shortcut, or a Back.
+  // re-visit), remember it in recents, and close any transient chrome. Keeping
+  // navigateTo surface-agnostic lets drills, breadcrumbs, and shortcuts share
+  // the same path.
   // ----------------------------------------------------------------------
   const navigateTo = useCallback((dirPath) => {
     const path = String(dirPath || '').replace(/^\/+|\/+$/g, '')
-    setGitOpen(false)
     setFilter('')
     setFilterOpen(false)
     setOverflowOpen(false)
     setTabs((prev) => prev.map((t) => (t.id === activeTabIdRef.current ? { ...t, path } : t)))
     if (!childrenByDir[path]) loadDir(path, { showLoading: true })
-    loadGit(path)
     if (prefsLoadedRef.current) {
       setPrefs((p) => {
-        const next = { ...p, lastPath: path, recents: pushRecent(p.recents, path) }
+        const next = { ...p, recents: pushRecent(p.recents, path) }
         savePrefs(next)
         return next
       })
     }
     emitSignal('dir_opened', { depth: path ? path.split('/').length : 0 })
-  }, [childrenByDir, loadDir, loadGit])
+  }, [childrenByDir, loadDir])
 
   const drillInto = useCallback((entry) => {
     navigateTo(entry.path)
@@ -362,16 +306,14 @@ export default function App({ appId, token }) {
     if (cwdRef.current) navigateTo(parentDir(cwdRef.current))
   }, [navigateTo])
 
-  // Load a tab's directory + git when it becomes active (cached listings make
+  // Load a tab's directory when it becomes active (cached listings make
   // switching instant). Shared by switch/new/close.
   const activateTabAt = useCallback((path) => {
     setFilter('')
     setFilterOpen(false)
-    setGitOpen(false)
     setOverflowOpen(false)
     if (!childrenByDir[path]) loadDir(path, { showLoading: true })
-    loadGit(path)
-  }, [childrenByDir, loadDir, loadGit])
+  }, [childrenByDir, loadDir])
 
   const switchTab = useCallback((id) => {
     if (id === activeTabIdRef.current) return
@@ -403,38 +345,17 @@ export default function App({ appId, token }) {
     }
   }, [tabs, activateTabAt])
 
-  // Persist the open tabs + active index (after the initial restore) so a
-  // reopen lands on the same set of folder tabs.
-  useEffect(() => {
-    if (!prefsLoadedRef.current) return
-    const openTabs = tabs.map((t) => t.path)
-    const activeTabIndex = Math.max(0, tabs.findIndex((t) => t.id === activeTabId))
-    setPrefs((p) => {
-      const nextP = { ...p, openTabs, activeTabIndex }
-      savePrefs(nextP)
-      return nextP
-    })
-  }, [tabs, activeTabId])
-
-  // --- Initial load + prefs restore ---
+  // --- Initial load + visual preference restore ---
+  // Each fresh launch starts in Apps. Folder tabs are intentionally session-
+  // scoped; persisting them made an old deep path override the useful start.
   useEffect(() => {
     loadDir('', { showLoading: true })
+    loadDir(START_PATH, { showLoading: true })
     fsDisk().then((d) => setDisk(d)).catch(() => setDisk(null))
     loadPrefs().then((p) => {
       setPrefs(p)
-      // Restore the open tabs (fresh ids), falling back to a single Home tab.
-      const paths = Array.isArray(p.openTabs) && p.openTabs.length
-        ? p.openTabs.map((x) => String(x || '').replace(/^\/+|\/+$/g, ''))
-        : ['']
-      const restored = paths.map((path) => ({ id: newTabId(), path }))
-      const idx = Math.min(Math.max(0, (p.activeTabIndex | 0)), restored.length - 1)
-      setTabs(restored)
-      setActiveTabId(restored[idx].id)
       prefsLoadedRef.current = true
-      const start = restored[idx].path
-      if (start && !childrenByDir[start]) loadDir(start, { showLoading: true })
-      loadGit(start)
-    }).catch(() => { prefsLoadedRef.current = true; loadGit('') })
+    }).catch(() => { prefsLoadedRef.current = true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -445,7 +366,6 @@ export default function App({ appId, token }) {
     wasOnlineRef.current = online
     if (online && !was && (dirError[cwdRef.current] || !(childrenByDir[cwdRef.current] || []).length)) {
       loadDir(cwdRef.current, { showLoading: true })
-      loadGit(cwdRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online])
@@ -598,7 +518,7 @@ export default function App({ appId, token }) {
   }, [selectedPath])
 
   // ----------------------------------------------------------------------
-  // Save (reused verbatim). Snapshot file+buffer at write time via refs so the
+  // Snapshot file+buffer at write time via refs so the
   // cleanup matches what we wrote; re-read on-disk before overwriting so an
   // agent edit isn't silently clobbered (prompt instead).
   // ----------------------------------------------------------------------
@@ -620,7 +540,6 @@ export default function App({ appId, token }) {
         baselineRef.current = savedText
         setDirty(bufferDirtyAfterSave(savedText, contentRef.current))
         setDiskNotice(null)
-        loadGit(cwdRef.current)
       }
       emitSignal('file_saved', { ext: extOf(baseName(savedPath)), bytes: savedText.length })
       // The saved file's row (size/mtime) is now stale — refresh its folder.
@@ -631,7 +550,7 @@ export default function App({ appId, token }) {
     } finally {
       setSaving(false)
     }
-  }, [loadGit, loadDir])
+  }, [loadDir])
 
   const canSave = !!(meta && meta.writable && !meta.is_binary && !truncated)
 
@@ -682,7 +601,7 @@ export default function App({ appId, token }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [handleSave, canSave])
 
-  // --- Agent turn done → re-read the open file + refresh the listing + git ---
+  // --- Agent turn done → re-read the open file + refresh the listing ---
   const handleTurnDone = useCallback(() => {
     const path = selectedRef.current
     if (path) {
@@ -690,11 +609,10 @@ export default function App({ appId, token }) {
       setFileReloadKey((k) => k + 1)
     }
     loadDir(cwdRef.current)
-    loadGit(cwdRef.current)
-  }, [loadFile, loadDir, loadGit])
+  }, [loadFile, loadDir])
 
   // ----------------------------------------------------------------------
-  // Create a file/folder in the current directory (reused, target = cwd).
+  // Create a file/folder in the current directory (target = cwd).
   // ----------------------------------------------------------------------
   const openCreate = useCallback(async (kind) => {
     const modal = { kind, targetDir: cwdRef.current }
@@ -741,7 +659,7 @@ export default function App({ appId, token }) {
   }, [createModal, childrenByDir, fetchDir, loadDir, attemptSelectFile, closeCreate])
 
   // ----------------------------------------------------------------------
-  // Delete a file (reused). Only files (the API refuses directories); the
+  // Delete a file. Only files (the API refuses directories); the
   // affordance lives in the Properties sheet.
   // ----------------------------------------------------------------------
   const requestDelete = useCallback(async (entry) => {
@@ -838,8 +756,7 @@ export default function App({ appId, token }) {
     openFile: selectedRef.current || null,
     dir: cwdRef.current || '/',
     dirty: dirtyRef.current || false,
-    gitSummary: git ? { branch: git.branch, dirty: (git.counts?.staged || 0) + (git.counts?.modified || 0) + (git.counts?.untracked || 0) } : null,
-  }), [git])
+  }), [])
 
   // A short informational line for the embedded chat's empty state — what the
   // agent can do, tuned to whether a file is currently open.
@@ -960,6 +877,7 @@ export default function App({ appId, token }) {
     emitSignal('sort_changed', { key })
   }, [patchPrefs])
   const toggleFoldersFirst = useCallback(() => patchPrefs((p) => ({ ...p, foldersFirst: !p.foldersFirst })), [patchPrefs])
+  const toggleShowHidden = useCallback(() => patchPrefs((p) => ({ ...p, showHidden: !p.showHidden })), [patchPrefs])
 
   const pinCurrent = useCallback(() => patchPrefs((p) => (
     p.bookmarks.includes(cwdRef.current) ? p : { ...p, bookmarks: [...p.bookmarks, cwdRef.current] }
@@ -977,32 +895,36 @@ export default function App({ appId, token }) {
   // ----------------------------------------------------------------------
   // Derived render data.
   // ----------------------------------------------------------------------
-  const rawEntries = useMemo(
-    () => (childrenByDir[cwd] || []).filter((e) => !isKeepMarker(e.name)),
+  const nonMarkerEntries = useMemo(
+    () => filterVisibleEntries(childrenByDir[cwd], { showHidden: true }),
     [childrenByDir, cwd],
   )
+  const listedEntries = useMemo(
+    () => (prefs.showHidden ? nonMarkerEntries : filterVisibleEntries(nonMarkerEntries)),
+    [nonMarkerEntries, prefs.showHidden],
+  )
   const sorted = useMemo(
-    () => sortEntries(rawEntries, { key: prefs.sortKey, dir: prefs.sortDir, foldersFirst: prefs.foldersFirst }),
-    [rawEntries, prefs.sortKey, prefs.sortDir, prefs.foldersFirst],
+    () => sortEntries(listedEntries, { key: prefs.sortKey, dir: prefs.sortDir, foldersFirst: prefs.foldersFirst }),
+    [listedEntries, prefs.sortKey, prefs.sortDir, prefs.foldersFirst],
   )
   const q = filter.trim().toLowerCase()
   const visible = q ? sorted.filter((e) => e.name.toLowerCase().includes(q)) : sorted
-  const changeMap = useMemo(() => buildChangeMap(git), [git])
   const now = Date.now()
 
   const census = useMemo(() => {
     let folders = 0, files = 0, bytes = 0
-    for (const e of rawEntries) {
+    for (const e of listedEntries) {
       if (e.type === 'directory') folders += 1
       else { files += 1; bytes += e.size || 0 }
     }
     return {
       folders, files, bytes,
       protectedCount: (redactedByDir[cwd] || []).length,
+      hiddenCount: prefs.showHidden ? 0 : nonMarkerEntries.length - listedEntries.length,
       capped: !!cappedByDir[cwd],
       matched: q ? visible.length : null,
     }
-  }, [rawEntries, redactedByDir, cappedByDir, cwd, q, visible.length])
+  }, [listedEntries, nonMarkerEntries.length, prefs.showHidden, redactedByDir, cappedByDir, cwd, q, visible.length])
 
   // Shortcuts filtered to those whose top-level segment exists on this instance
   // (platform/compiled/cron-logs are instance-specific). The root listing tells
@@ -1024,7 +946,7 @@ export default function App({ appId, token }) {
       return (
         <div className="ex-list-note is-error">
           {listError}
-          <button type="button" className="ex-retry" onClick={() => { loadDir(cwd, { showLoading: true }); loadGit(cwd) }}>Retry</button>
+          <button type="button" className="ex-retry" onClick={() => loadDir(cwd, { showLoading: true })}>Retry</button>
         </div>
       )
     }
@@ -1054,10 +976,8 @@ export default function App({ appId, token }) {
               key={entry.path}
               entry={entry}
               selected={entry.path === selectedPath}
-              changeChip={changeMap[entry.path]}
               onOpen={(e) => (e.type === 'directory' ? drillInto(e) : attemptSelectFile(e.path))}
               onProps={openProps}
-              now={now}
               reloadKey={fileReloadKey}
             />
           ))}
@@ -1071,7 +991,6 @@ export default function App({ appId, token }) {
             key={entry.path}
             entry={entry}
             selected={entry.path === selectedPath}
-            changeChip={changeMap[entry.path]}
             onOpen={(e) => (e.type === 'directory' ? drillInto(e) : attemptSelectFile(e.path))}
             onProps={openProps}
             now={now}
@@ -1084,18 +1003,6 @@ export default function App({ appId, token }) {
   function renderBrowser() {
     return (
       <section className="ex-browser">
-        {(git || gitLoading || (gitError && gitError.status !== 404)) && (
-          <GitPanel
-            git={git}
-            gitError={gitError}
-            gitLoading={gitLoading}
-            repoRoot={git ? git.repo_root : null}
-            open={gitOpen}
-            onToggle={() => setGitOpen((v) => !v)}
-            onOpenFile={(p) => attemptSelectFile(p)}
-            onOpenDir={(p) => navigateTo(p)}
-          />
-        )}
         <div className="ex-list-scroll ex-scroll">{renderList()}</div>
         <StatusBar census={census} disk={disk} filterActive={!!q} />
       </section>
@@ -1127,7 +1034,6 @@ export default function App({ appId, token }) {
       diskNotice={diskNotice}
       truncated={truncated}
       truncatedTotal={truncatedTotal}
-      online={online}
       showBack={!isDesktop}
       onBack={requestCloseFile}
       onSave={handleSave}
@@ -1317,13 +1223,15 @@ export default function App({ appId, token }) {
           sortKey={prefs.sortKey}
           sortDir={prefs.sortDir}
           foldersFirst={prefs.foldersFirst}
+          showHidden={prefs.showHidden}
           online={online}
           onView={setView}
           onSort={setSort}
           onToggleFoldersFirst={toggleFoldersFirst}
+          onToggleShowHidden={toggleShowHidden}
           onNewFile={() => openCreate('file')}
           onNewFolder={() => openCreate('folder')}
-          onRefresh={() => { loadDir(cwd, { showLoading: true }); loadGit(cwd) }}
+          onRefresh={() => loadDir(cwd, { showLoading: true })}
           onClose={closeOverflow}
         />
       )}

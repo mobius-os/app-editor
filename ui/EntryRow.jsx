@@ -1,6 +1,6 @@
 import { Icon } from './Icons.jsx'
 import {
-  entryIcon, formatBytes, relativeTime, isImagePath,
+  entryIcon, formatBytes, relativeTime,
 } from '../paths.js'
 
 // ----------------------------------------------------------------------
@@ -9,13 +9,10 @@ import {
 // button that opens the Properties sheet (destructive delete lives there, not
 // on the row, so a dense list stays calm).
 //
-// Observability lives in the row: relative modified time, exact size, an
-// immediate item-count for folders (when the server sent child_count), a git
-// change chip for a file the agent touched and a "git" badge on repo folders.
-// The relative modified time already communicates recency; an older blue-dot
-// marker duplicated that information and collided with Git's untracked color.
+// Observability lives in the row: relative modified time, exact size, and an
+// immediate item-count for folders (when the server sent child_count).
 // ----------------------------------------------------------------------
-export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) {
+export function EntryRow({ entry, selected, onOpen, onProps, now }) {
   const isDir = entry.type === 'directory'
   const ic = entryIcon(entry)
   const rel = relativeTime(entry.modified_at, now)
@@ -50,8 +47,6 @@ export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) 
           </span>
           <span className="ex-row-meta">{meta.join(' · ')}</span>
         </span>
-        {entry.is_git_repo && <span className="ex-badge-git" title="Git repository">git</span>}
-        {changeChip && <span className={`ex-chip tone-${changeChip.tone}`} title={changeChip.label}>{changeChip.label}</span>}
         {isDir && <Icon name="chevron-right" size={17} className="ex-row-chevron" />}
       </button>
       <button
@@ -65,9 +60,4 @@ export function EntryRow({ entry, selected, changeChip, onOpen, onProps, now }) 
       </button>
     </div>
   )
-}
-
-// Whether an entry should try to draw an image thumbnail in grid view.
-export function isThumbable(entry) {
-  return entry.type !== 'directory' && isImagePath(entry.path)
 }

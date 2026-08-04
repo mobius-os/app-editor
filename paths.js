@@ -225,6 +225,17 @@ export function isKeepMarker(name) {
   return String(name || '') === '.keep'
 }
 
+// Apply the Editor's visibility policy in one place. `.keep` is always an
+// implementation detail; other dotfiles are ordinary entries the owner can
+// reveal with the persisted "Show hidden files" setting.
+export function filterVisibleEntries(entries, { showHidden = false } = {}) {
+  if (!Array.isArray(entries)) return []
+  return entries.filter((entry) => {
+    if (!entry || isKeepMarker(entry.name)) return false
+    return showHidden || !String(entry.name || '').startsWith('.')
+  })
+}
+
 // Join a directory path (FS-root-relative, '' = root) with a leaf name.
 export function joinPath(dir, leaf) {
   return dir ? `${dir}/${leaf}` : leaf
@@ -237,22 +248,6 @@ export function joinPath(dir, leaf) {
 // lost. This is the invariant behind the writeNow save state machine.
 export function bufferDirtyAfterSave(savedText, liveText) {
   return liveText !== savedText
-}
-
-// Parse a git-porcelain entry path into display parts. A wholly-untracked
-// directory arrives as `subdir/` (trailing slash); strip it before splitting so
-// the row renders a real name and is flagged as a folder, rather than a blank
-// card that would open a directory path as if it were a file (which 404s and
-// then reads as "This file no longer exists"). `path` is the slash-stripped
-// path a caller opens/focuses; `base` keeps the trailing slash for display.
-export function parseGitEntryPath(rawPath) {
-  const raw = String(rawPath || '')
-  const isDir = raw.endsWith('/')
-  const path = isDir ? raw.replace(/\/+$/, '') : raw
-  const idx = path.lastIndexOf('/')
-  const base = (idx >= 0 ? path.slice(idx + 1) : path) + (isDir ? '/' : '')
-  const dir = idx >= 0 ? path.slice(0, idx) : ''
-  return { isDir, path, base, dir }
 }
 
 // ----------------------------------------------------------------------
