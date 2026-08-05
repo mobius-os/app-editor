@@ -1,7 +1,7 @@
 // Editor — a MiXplorer-style file inspector + light editor for Möbius.
 //
 // The module tree is declared in mobius.json's source_files; the multi-file
-// installer fetches each path and esbuild bundles from this entry, resolving
+// installer fetches each path and Rolldown bundles from this entry, resolving
 // the relative imports below at compile time.
 //
 //   constants.js  — scalar constants (view/sort/prefs, shortcuts, caps)
