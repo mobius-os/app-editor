@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   baseName, dirName, extOf, joinPath, isMarkdownPath, isImagePath,
-  isValidLeafName, isKeepMarker, fileGlyph, formatBytes,
+  isValidLeafName, isKeepMarker, filterVisibleEntries, fileGlyph, formatBytes,
 } from '../paths.js'
 
 test('baseName / dirName split FS-root-relative paths', () => {
@@ -49,6 +49,15 @@ test('isKeepMarker only matches the literal .keep', () => {
   assert.equal(isKeepMarker('.keep'), true)
   assert.equal(isKeepMarker('keep'), false)
   assert.equal(isKeepMarker('.keepme'), false)
+})
+
+test('hidden files stay optional while .keep always stays private', () => {
+  const entries = [{ name: '.git' }, { name: '.keep' }, { name: 'index.jsx' }]
+  assert.deepEqual(filterVisibleEntries(entries).map((entry) => entry.name), ['index.jsx'])
+  assert.deepEqual(
+    filterVisibleEntries(entries, { showHidden: true }).map((entry) => entry.name),
+    ['.git', 'index.jsx'],
+  )
 })
 
 test('fileGlyph maps common extensions', () => {

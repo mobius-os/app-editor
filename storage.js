@@ -11,14 +11,9 @@ export function configureFilesystemToken(token) {
   _filesystemToken = typeof token === 'string' ? token : ''
 }
 
-export function filesystemToken() {
-  return _filesystemToken
-}
-
 function requireFilesystemToken() {
-  const token = filesystemToken()
-  if (!token) throw new FsError('Filesystem access is unavailable. Reopen the Editor and try again.', 401)
-  return token
+  if (!_filesystemToken) throw new FsError('Filesystem access is unavailable. Reopen the Editor and try again.', 401)
+  return _filesystemToken
 }
 
 // Fire-and-forget analytics for Reflection. window.mobius.signal buffers in
@@ -31,22 +26,31 @@ export function emitSignal(name, payload) {
 
 // A thrown FsError carries the HTTP status so callers can branch (403 → "ask
 // the agent", 404 → "deleted", 413 → "too big") instead of string-matching.
-export class FsError extends Error {
+class FsError extends Error {
   constructor(message, status) {
     super(message)
     this.status = status
   }
 }
 
-export async function fsJSON(pathQuery) {
-  const tok = requireFilesystemToken()
-  const r = await fetch(`${FS}${pathQuery}`, { headers: { Authorization: `Bearer ${tok}` } })
-  if (!r.ok) {
-    let detail = `Request failed (${r.status}).`
-    try { detail = (await r.json()).detail || detail } catch { /* non-JSON body */ }
-    throw new FsError(detail, r.status)
-  }
-  return r.json()
+// Every filesystem request has the same security and failure contract. Keep it
+// here so new operations cannot accidentally omit the scoped token or invent a
+// different backend-error parser.
+async function fsRequest(pathQuery, init = {}, failure = 'Request failed') {
+  const token = requireFilesystemToken()
+  const response = await fetch(`${FS}${pathQuery}`, {
+    ...init,
+    headers: { ...(init.headers || {}), Authorization: `Bearer ${token}` },
+  })
+  if (response.ok) return response
+
+  let detail = `${failure} (${response.status}).`
+  try { detail = (await response.json()).detail || detail } catch { /* non-JSON body */ }
+  throw new FsError(detail, response.status)
+}
+
+async function fsJSON(pathQuery, init, failure) {
+  return (await fsRequest(pathQuery, init, failure)).json()
 }
 
 // List one directory level. `path` is relative to the FS root ("" = root).
@@ -71,16 +75,7 @@ export function fsMeta(path) {
 // Read a file's text. Returns the plaintext string; throws FsError on
 // 403/404/413/etc. (the caller has already checked meta for binary/size).
 export async function fsReadText(path) {
-  const tok = requireFilesystemToken()
-  const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}`, {
-    headers: { Authorization: `Bearer ${tok}` },
-  })
-  if (!r.ok) {
-    let detail = `Could not read the file (${r.status}).`
-    try { detail = (await r.json()).detail || detail } catch { /* may be a text body */ }
-    throw new FsError(detail, r.status)
-  }
-  return r.text()
+  return (await fsRequest(`/read?path=${encodeURIComponent(path)}`, {}, 'Could not read the file')).text()
 }
 
 // Peek the first chunk of a TEXT file that is over the server's inline/preview
@@ -91,18 +86,14 @@ export async function fsReadText(path) {
 // caller catches that and shows the "too large — ask the agent" notice, so this
 // is a pure enhancement. Never used for binaries.
 export async function fsReadHead(path) {
-  const tok = requireFilesystemToken()
-  const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}&head=1`, {
-    headers: { Authorization: `Bearer ${tok}` },
-  })
-  if (!r.ok) {
-    let detail = `Could not read the file (${r.status}).`
-    try { detail = (await r.json()).detail || detail } catch { /* text body */ }
-    throw new FsError(detail, r.status)
-  }
-  const truncated = r.headers.get('X-Mobius-Truncated') === '1'
-  const total = Number(r.headers.get('X-Mobius-Total-Size')) || null
-  return { text: await r.text(), truncated, total }
+  const response = await fsRequest(
+    `/read?path=${encodeURIComponent(path)}&head=1`,
+    {},
+    'Could not read the file',
+  )
+  const truncated = response.headers.get('X-Mobius-Truncated') === '1'
+  const total = Number(response.headers.get('X-Mobius-Total-Size')) || null
+  return { text: await response.text(), truncated, total }
 }
 
 // Read a file as a Blob (for image preview / thumbnails). <img src> can't carry
@@ -110,53 +101,31 @@ export async function fsReadHead(path) {
 // call site. cache: 'reload' bypasses the HTTP cache so an image the agent
 // regenerated at the same path returns its FRESH bytes.
 export async function fsReadBlob(path) {
-  const tok = requireFilesystemToken()
-  const r = await fetch(`${FS}/read?path=${encodeURIComponent(path)}`, {
-    headers: { Authorization: `Bearer ${tok}` },
-    cache: 'reload',
-  })
-  if (!r.ok) throw new FsError(`Could not load the file (${r.status}).`, r.status)
-  return r.blob()
+  return (await fsRequest(
+    `/read?path=${encodeURIComponent(path)}`,
+    { cache: 'reload' },
+    'Could not load the file',
+  )).blob()
 }
 
 // Write text to a path under /data. 403 = denied/root-owned/protected;
 // 413 = too big. Body is raw text/plain (the route reads it as a string body).
 export async function fsWrite(path, content) {
-  const tok = requireFilesystemToken()
-  const r = await fetch(`${FS}/write?path=${encodeURIComponent(path)}`, {
+  return fsJSON(`/write?path=${encodeURIComponent(path)}`, {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'text/plain' },
+    headers: { 'Content-Type': 'text/plain' },
     body: content,
-  })
-  if (!r.ok) {
-    let detail = `Could not save (${r.status}).`
-    try { detail = (await r.json()).detail || detail } catch { /* non-JSON */ }
-    throw new FsError(detail, r.status)
-  }
-  return r.json()
+  }, 'Could not save')
 }
 
 // Delete a file at `path` under /data. 403 = denied/root-owned/protected;
 // 404 = already gone (the caller treats either as "it's no longer there").
 export async function fsDelete(path) {
-  const tok = requireFilesystemToken()
-  const r = await fetch(`${FS}/delete?path=${encodeURIComponent(path)}`, {
+  await fsRequest(`/delete?path=${encodeURIComponent(path)}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${tok}` },
-  })
-  if (!r.ok) {
-    let detail = `Could not delete (${r.status}).`
-    try { detail = (await r.json()).detail || detail } catch { /* non-JSON */ }
-    throw new FsError(detail, r.status)
-  }
+  }, 'Could not delete')
   // 204/empty bodies are fine — callers don't need a payload.
   return true
-}
-
-// Git status for the repo containing `path`. Throws FsError(404) when there's
-// no repo between `path` and the root — the caller treats that as "no repo".
-export function fsGit(path) {
-  return fsJSON(`/git?path=${encodeURIComponent(path || '')}`)
 }
 
 // Disk usage of the /data filesystem (statvfs) → { total, used, free, path } in
@@ -193,7 +162,7 @@ export async function fsDu(path) {
 // so prefer the shell's probed reachability verdict when available. The browser
 // online/offline events remain as a standalone/old-runtime fallback.
 // ----------------------------------------------------------------------
-export function currentOnline() {
+function currentOnline() {
   const mobiusOnline = typeof window !== 'undefined' ? window.mobius?.online : undefined
   if (typeof mobiusOnline === 'boolean') return mobiusOnline
   return typeof navigator === 'undefined' ? true : navigator.onLine !== false
@@ -215,14 +184,22 @@ export function useOnline() {
 }
 
 // ----------------------------------------------------------------------
-// Per-app UI prefs (view mode, sort, folders-first, bookmarks, recents, last
-// directory) persisted via window.mobius.storage so a reopen lands where the
-// owner left off with their chosen layout. Best-effort — a failure just means
-// we open at the root with defaults. chat_id.json is owned by the chat helper's
+// Per-app UI prefs (view mode, sort, folders-first, hidden files, bookmarks,
+// and recents) persisted via window.mobius.storage. Best-effort — a failure
+// just means we open with defaults. chat_id.json is owned by the chat helper's
 // `persist`, not written here.
 // ----------------------------------------------------------------------
 function storageApi() {
   return (typeof window !== 'undefined' && window.mobius && window.mobius.storage) || null
+}
+
+function currentPrefs(stored) {
+  const source = stored && typeof stored === 'object' ? stored : {}
+  const prefs = {}
+  for (const [key, fallback] of Object.entries(DEFAULT_PREFS)) {
+    prefs[key] = source[key] ?? fallback
+  }
+  return prefs
 }
 
 // Load prefs merged over the defaults so a partial/old blob still yields every
@@ -231,7 +208,7 @@ export function loadPrefs() {
   const ms = storageApi()
   if (!ms || typeof ms.get !== 'function') return Promise.resolve({ ...DEFAULT_PREFS })
   return ms.get(PREFS_PATH)
-    .then((p) => ({ ...DEFAULT_PREFS, ...(p && typeof p === 'object' ? p : {}) }))
+    .then(currentPrefs)
     .catch(() => ({ ...DEFAULT_PREFS }))
 }
 

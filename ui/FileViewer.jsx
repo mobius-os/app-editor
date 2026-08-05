@@ -9,7 +9,7 @@ import {
 // ----------------------------------------------------------------------
 // The file viewer / light editor — the right pane on desktop, a pushed
 // full-screen surface on phone. Reader-first: a file opens as a preview
-// (CodeMirror markdown live-preview / plain monospace for text, ImagePreview
+// (CodeMirror markdown live-preview / plain monospace for text, Preview
 // for images, an honest notice for binary / too-large / read-only). WRITABILITY
 // drives editability — no mode toggle — so a writable text file is directly
 // editable with Save appearing, exactly as before. Every save-safety banner
@@ -19,7 +19,7 @@ import {
 export function FileViewer({
   path, meta, content, onChange, fileLoading, fileError,
   dirty, saving, canSave, saveError, diskNotice,
-  truncated, truncatedTotal, online, showBack, onBack, onSave, onAskAgent, fileReloadKey,
+  truncated, truncatedTotal, showBack, onBack, onSave, onAskAgent, fileReloadKey,
 }) {
   const name = baseName(path)
   const readOnly = !canSave
@@ -101,7 +101,7 @@ export function FileViewer({
               {saving ? 'Saving…' : 'Save'}
             </button>
           )}
-          <button type="button" className="ex-icon-btn" onClick={() => onAskAgent(path)} aria-label="Ask the agent about this file" title="Ask the agent">
+          <button type="button" className="ex-icon-btn" onClick={onAskAgent} aria-label="Ask the agent about this file" title="Ask the agent">
             <ChatBubbleIcon size={19} />
           </button>
         </div>

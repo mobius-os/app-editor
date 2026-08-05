@@ -12,8 +12,9 @@ import {
 // focus lands on the panel so keyboard users can tab through it.
 // ----------------------------------------------------------------------
 export function OverflowMenu({
-  view, sortKey, sortDir, foldersFirst, online,
-  onView, onSort, onToggleFoldersFirst, onNewFile, onNewFolder, onRefresh, onClose,
+  view, sortKey, sortDir, foldersFirst, showHidden, online,
+  onView, onSort, onToggleFoldersFirst, onToggleShowHidden,
+  onNewFile, onNewFolder, onRefresh, onClose,
 }) {
   const panelRef = useRef(null)
   useEffect(() => {
@@ -66,6 +67,10 @@ export function OverflowMenu({
         <button type="button" className="ex-menu-item" role="menuitemcheckbox" aria-checked={foldersFirst} onClick={onToggleFoldersFirst}>
           <span className="ex-menu-check">{foldersFirst && <Icon name="check" size={15} />}</span>
           <span className="ex-menu-item-text">Folders first</span>
+        </button>
+        <button type="button" className="ex-menu-item" role="menuitemcheckbox" aria-checked={showHidden} onClick={onToggleShowHidden}>
+          <span className="ex-menu-check">{showHidden && <Icon name="check" size={15} />}</span>
+          <span className="ex-menu-item-text">Show hidden files</span>
         </button>
 
         <div className="ex-menu-divider" />

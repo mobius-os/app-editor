@@ -6,7 +6,7 @@ import { formatBytes, baseName, diskUsage } from '../paths.js'
 // internal/SD/USB storage list: a curated set of jump points to the places on
 // the server worth inspecting (apps, shared, memory, skills, logs…), the
 // owner's own pinned folders, and a recents list. The <aside> shell, scrim, and
-// swipe-to-close live in the App (reused from the shell drawer); this renders
+// swipe-to-close live in the App; this renders
 // what goes inside. A disk gauge at the top answers "how full is my server" the
 // moment the drawer opens.
 // ----------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {
   "name": "app-editor",
-  "version": "0.6.4",
+  "version": "0.6.9",
   "private": true,
   "type": "module",
   "description": "Browse and edit the files behind your Mobius apps.",

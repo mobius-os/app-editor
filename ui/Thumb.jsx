@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icons.jsx'
-import { entryIcon, formatBytes } from '../paths.js'
+import { entryIcon, formatBytes, isImagePath } from '../paths.js'
 import { fsReadBlob } from '../storage.js'
 import { THUMB_MAX_BYTES } from '../constants.js'
-import { isThumbable } from './EntryRow.jsx'
 
 // ----------------------------------------------------------------------
 // Grid view. There is no thumbnail endpoint — /api/fs/read streams the FULL
@@ -74,10 +73,10 @@ function Thumb({ path, reloadKey }) {
   )
 }
 
-export function GridCell({ entry, selected, changeChip, onOpen, onProps, now, reloadKey }) {
+export function GridCell({ entry, selected, onOpen, onProps, reloadKey }) {
   const isDir = entry.type === 'directory'
   const ic = entryIcon(entry)
-  const showThumb = isThumbable(entry) && (entry.size || 0) <= THUMB_MAX_BYTES
+  const showThumb = !isDir && isImagePath(entry.path) && (entry.size || 0) <= THUMB_MAX_BYTES
   return (
     <div className={`ex-cell-wrap${selected ? ' is-selected' : ''}`}>
       <button
@@ -98,12 +97,6 @@ export function GridCell({ entry, selected, changeChip, onOpen, onProps, now, re
             ? (typeof entry.child_count === 'number' ? `${entry.child_count >= 10000 ? '10000+' : entry.child_count} items` : '')
             : formatBytes(entry.size)}
         </span>
-        {entry.is_git_repo && <span className="ex-badge-git ex-badge-git--cell">git</span>}
-        {changeChip && (
-          <span className={`ex-chip ex-cell-change tone-${changeChip.tone}`} title={changeChip.label}>
-            {changeChip.label === 'Staged + Modified' ? 'Staged + local' : changeChip.label}
-          </span>
-        )}
       </button>
       <button
         type="button"

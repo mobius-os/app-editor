@@ -1,8 +1,8 @@
 {
   "id": "editor",
   "name": "Editor",
-  "version": "0.6.6",
-  "description": "Browse, inspect, and edit every file on your Möbius. Follow git status, check file details, and ask the agent to make changes with you.",
+  "version": "0.6.9",
+  "description": "Browse, inspect, and edit every file on your Möbius, with focused details and an agent ready to help.",
   "author": "mobius-os",
   "license": "MIT",
   "homepage": "https://github.com/mobius-os/app-editor",
@@ -29,7 +29,6 @@
     "ui/useModalFocus.js",
     "ui/NameModal.jsx",
     "ui/ConfirmModal.jsx",
-    "ui/GitPanel.jsx",
     "ui/ChatPanel.jsx",
     "ui/ChatBubbleIcon.jsx"
   ],

@@ -11,9 +11,8 @@ export const VIDEO_EXTS = new Set(['mp4', 'webm', 'ogv', 'mov', 'm4v'])
 export const FOCUSABLE_SELECTOR =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
-export const GIT_LIST_PREVIEW = 8
-
 export const PREFS_PATH = 'ui-prefs.json'
+export const START_PATH = 'apps'
 
 // The width at which the app flips from phone (stack + drill; the drawer
 // overlays; file/properties/chat push full-screen) to desktop MASTER-DETAIL
@@ -63,11 +62,9 @@ export const DEFAULT_PREFS = {
   sortKey: SORT_NAME,
   sortDir: 'asc',       // 'asc' | 'desc'
   foldersFirst: true,
+  showHidden: false,
   bookmarks: [],        // owner-pinned extra dir paths (FS-root-relative strings)
   recents: [],          // recently-visited dirs, most-recent first (capped)
-  lastPath: '',         // last directory the owner browsed (a dir, not a file)
-  openTabs: [''],       // one dir path per open folder tab (restored on reopen)
-  activeTabIndex: 0,    // which openTabs entry is active
 }
 
 export const TABS_MAX = 8
