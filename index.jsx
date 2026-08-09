@@ -1064,7 +1064,7 @@ export default function App({ appId, token }) {
               alt=""
               width={34}
               height={34}
-              className="ex-brand-icon"
+              className="ex-brand-icon" ref={(el) => el && window.mobius.immersive && window.mobius.immersive.holdToToggle(el)}
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
                 const fallback = e.currentTarget.nextElementSibling
