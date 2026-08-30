@@ -1,65 +1,34 @@
 {
   "id": "editor",
-  "name": "Editor",
-  "version": "0.6.10",
-  "description": "Browse, inspect, and edit every file on your Möbius, with focused details and an agent ready to help.",
+  "name": "Files",
+  "version": "0.7.0",
+  "description": "Browse and preview files on this Möbius.",
   "author": "mobius-os",
   "license": "MIT",
   "homepage": "https://github.com/mobius-os/app-editor",
   "entry": "index.jsx",
   "source_files": [
     "constants.js",
-    "paths.js",
-    "theme.js",
-    "source-syntax.js",
     "domain.js",
     "storage.js",
-    "ui/Icons.jsx",
-    "ui/TabStrip.jsx",
-    "ui/Breadcrumb.jsx",
-    "ui/EntryRow.jsx",
-    "ui/Thumb.jsx",
-    "ui/StatusBar.jsx",
-    "ui/OverflowMenu.jsx",
-    "ui/BookmarksDrawer.jsx",
-    "ui/PropertiesSheet.jsx",
-    "ui/FileViewer.jsx",
-    "ui/Preview.jsx",
-    "ui/CodeEditor.jsx",
-    "ui/useModalFocus.js",
-    "ui/NameModal.jsx",
-    "ui/ConfirmModal.jsx",
-    "ui/ChatPanel.jsx",
-    "ui/ChatBubbleIcon.jsx"
+    "theme.js"
   ],
-  "icon": "icon-v2.png",
+  "icon": "icon.png",
   "offline_capable": false,
   "offline": {
     "reads": false,
     "writes": "none",
     "execution": "none"
   },
-  "embeds_agent": true,
   "permissions": {
     "cross_app_access": "none",
     "share_with_apps": "none",
     "filesystem_access": true
   },
-  "storage_seeds": {
-    "chat_id.json": null
-  },
   "runtime": {
     "imports": [
       "react",
       "react-dom",
-      "@codemirror/state",
-      "@codemirror/view",
-      "@codemirror/commands",
-      "@codemirror/language",
-      "@codemirror/lang-markdown",
-      "@lezer/highlight",
-      "katex",
-      "pdfjs-dist",
       "@openai/apps-sdk-ui/components/Icon"
     ],
     "esm_deps": []

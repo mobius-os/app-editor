@@ -1,88 +1,25 @@
-// Shared scalar constants for the Editor module tree.
-export const FS = '/api/fs'
-
-export const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdown', 'mkd'])
-export const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif'])
-// Media the viewer can preview inline via a blob object URL (small files only —
-// the /api/fs read cap is 5 MB, so a bigger media file shows the size notice).
-export const AUDIO_EXTS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus'])
-export const VIDEO_EXTS = new Set(['mp4', 'webm', 'ogv', 'mov', 'm4v'])
-
-export const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-
-export const PREFS_PATH = 'ui-prefs.json'
+export const FS_ROOT = '/api/fs'
 export const START_PATH = 'apps'
-
-// The width at which the app flips from phone (stack + drill; the drawer
-// overlays; file/properties/chat push full-screen) to desktop MASTER-DETAIL
-// (a wide listing column beside a docked viewer/properties pane; the drawer
-// pins as a rail). One source of truth so the JS layout choices and the CSS
-// media query never disagree.
+export const DIRECTORY_PAGE_LIMIT = 40
+export const DIRECTORY_ENTRY_LIMIT = 6000
 export const DESKTOP_BREAKPOINT = 760
 
-// Directory-listing safety. The FS is huge, so a directory is fetched one level
-// at a time; a single level can still be thousands of entries (node_modules),
-// so we page through cursors but cap the total so a pathological dir can't pull
-// the whole thing into memory. Beyond the cap the status bar says "showing
-// first N" so a partial client-side sort is never presented as complete.
-export const LISTING_PAGE_CAP = 50      // max cursor pages fetched per dir
-export const LISTING_ENTRY_CAP = 10000  // ~ LISTING_PAGE_CAP * server page size
-
-// Grid thumbnails pull FULL image bytes (there is no thumbnail endpoint), so we
-// only auto-fetch a thumb for an image under this size; bigger images render
-// the file-kind glyph until opened. Keeps an image-heavy folder from pulling
-// tens of MB just to draw a grid.
-export const THUMB_MAX_BYTES = 2 * 1024 * 1024
-
-// View modes (persisted globally). List is the inspector default; Grid is for
-// image-heavy folders (lazy, viewport-gated thumbnails).
-export const VIEW_LIST = 'list'
-export const VIEW_GRID = 'grid'
-
-// Sort keys + directions (persisted globally). Default mirrors the server's
-// own ordering (directories first, then case-insensitive name) so the first
-// paint matches the listing order with no client reshuffle.
-export const SORT_NAME = 'name'
-export const SORT_SIZE = 'size'
-export const SORT_MODIFIED = 'modified'
-export const SORT_KIND = 'kind'
-export const SORT_KEYS = [SORT_NAME, SORT_SIZE, SORT_MODIFIED, SORT_KIND]
-export const SORT_LABELS = {
-  [SORT_NAME]: 'Name',
-  [SORT_SIZE]: 'Size',
-  [SORT_MODIFIED]: 'Modified',
-  [SORT_KIND]: 'Kind',
-}
-
-// The default prefs, applied when nothing is stored yet or a field is missing.
-// One object so a stored prefs blob only has to override the keys it knows.
-export const DEFAULT_PREFS = {
-  view: VIEW_LIST,
-  sortKey: SORT_NAME,
-  sortDir: 'asc',       // 'asc' | 'desc'
-  foldersFirst: true,
-  showHidden: false,
-  bookmarks: [],        // owner-pinned extra dir paths (FS-root-relative strings)
-  recents: [],          // recently-visited dirs, most-recent first (capped)
-}
-
-export const TABS_MAX = 8
-
-export const RECENTS_MAX = 12
-
-// Curated jump points — the Möbius-meaningful replacement for MiXplorer's
-// internal/SD/USB storage list. Only those whose top-level segment actually
-// exists on this instance are shown (some, like platform/compiled/cron-logs,
-// are instance-specific). `path` is FS-root-relative; '' is /data itself.
-export const SHORTCUTS = [
-  { label: 'Home', path: '', hint: '/data', icon: 'home' },
-  { label: 'Apps', path: 'apps', hint: 'installed mini-apps', icon: 'apps' },
-  { label: 'Shared', path: 'shared', hint: 'cross-app files', icon: 'folder' },
-  { label: 'Memory', path: 'shared/memory', hint: 'agent knowledge graph', icon: 'brain' },
-  { label: 'Skills', path: 'shared/skills', hint: 'agent skills', icon: 'book' },
-  { label: 'Logs', path: 'logs', hint: 'chat + app logs', icon: 'logs' },
-  { label: 'Cron logs', path: 'cron-logs', hint: 'scheduled task output', icon: 'clock' },
-  { label: 'Compiled', path: 'compiled', hint: 'built app bundles', icon: 'code' },
-  { label: 'Platform', path: 'platform', hint: 'served platform clone', icon: 'server' },
+export const LOCATIONS = [
+  { label: 'Apps', path: 'apps', icon: 'apps' },
+  { label: 'Shared', path: 'shared', icon: 'folder' },
+  { label: 'Platform', path: 'platform', icon: 'code' },
 ]
+
+export const IMAGE_EXTENSIONS = new Set([
+  'avif', 'bmp', 'gif', 'ico', 'jpeg', 'jpg', 'png', 'svg', 'webp',
+])
+export const AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav'])
+export const VIDEO_EXTENSIONS = new Set(['m4v', 'mov', 'mp4', 'ogv', 'webm'])
+export const CODE_EXTENSIONS = new Set([
+  'c', 'cc', 'cpp', 'css', 'go', 'h', 'html', 'java', 'js', 'jsx', 'json',
+  'kt', 'lua', 'mjs', 'php', 'py', 'rb', 'rs', 'scss', 'sh', 'sql', 'svelte',
+  'swift', 'toml', 'ts', 'tsx', 'vue', 'xml', 'yaml', 'yml',
+])
+export const TEXT_EXTENSIONS = new Set([
+  'csv', 'env', 'ini', 'log', 'markdown', 'md', 'rst', 'text', 'txt',
+])
