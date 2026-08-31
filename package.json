@@ -1,9 +1,9 @@
 {
-  "name": "app-editor",
-  "version": "0.6.10",
+  "name": "app-files",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
-  "description": "Browse and edit the files behind your Mobius apps.",
+  "description": "Browse and preview the files on a Möbius instance.",
   "license": "MIT",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\""
