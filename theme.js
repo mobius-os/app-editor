@@ -164,6 +164,14 @@ export const CSS = `
   .fx-media-preview { padding: 16px; }
 }
 
+@media (pointer: coarse) {
+  .fx-crumbs { height: 44px; }
+  .fx-crumb-part button { min-height: 44px; min-width: 44px; padding: 0 8px; }
+  .fx-search { height: 46px; }
+  .fx-search button { width: 44px; height: 44px; margin-right: -10px; }
+  .fx-mobile-locations button { min-height: 44px; padding: 0 14px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fx-spinner { animation: none; }
   .fx-root * { scroll-behavior: auto !important; transition-duration: 0s !important; }
