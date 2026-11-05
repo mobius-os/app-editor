@@ -196,8 +196,10 @@ export default function App({ token }) {
       onBack: () => {
         const index = levelsRef.current.indexOf(level)
         if (index === -1) return
-        // The shell already consumed this entry; drop it and any unbacked
-        // levels opened above it without sending another nav-pop.
+        // The shell already consumed this entry. Close any level opened above
+        // it (one may still await the shell's reply), then drop this one
+        // without sending another nav-pop for it.
+        popTo(index + 1)
         levelsRef.current.length = index
         renderTop()
       },
@@ -217,7 +219,7 @@ export default function App({ token }) {
     Promise.resolve(level.handle?.outcome).then((outcome) => {
       if (outcome && outcome.status !== 'owned') level.handle = null
     }, () => { level.handle = null })
-  }, [renderTop])
+  }, [popTo, renderTop])
 
   useEffect(() => () => popTo(0), [popTo])
 
