@@ -104,9 +104,12 @@ export default function App({ token }) {
     }
   }, [])
 
+  // A new folder starts unfiltered and empty until its listing arrives.
   useEffect(() => {
-    loadFolder(START_PATH)
-  }, [loadFolder, token])
+    setEntries([])
+    setQuery('')
+    loadFolder(cwd)
+  }, [cwd, loadFolder, token])
 
   useEffect(() => () => {
     if (preview.objectUrl) URL.revokeObjectURL(preview.objectUrl)
@@ -118,17 +121,6 @@ export default function App({ token }) {
   // them. The visible view is always derived from the top level.
   const levelsRef = useRef([])
   const baseRef = useRef(START_PATH)
-  const cwdRef = useRef(START_PATH)
-
-  const showFolder = useCallback((path) => {
-    const clean = normalizePath(path)
-    if (clean === cwdRef.current) return
-    cwdRef.current = clean
-    setCwd(clean)
-    setEntries([])
-    setQuery('')
-    loadFolder(clean)
-  }, [loadFolder])
 
   const clearPreview = useCallback(() => {
     fileRequest.current += 1
@@ -181,10 +173,10 @@ export default function App({ token }) {
     const levels = levelsRef.current
     const top = levels.at(-1) || null
     const folder = [...levels].reverse().find((level) => level.kind === 'folder')
-    showFolder(folder ? folder.path : baseRef.current)
+    setCwd(folder ? folder.path : baseRef.current)
     if (top?.kind === 'preview') loadPreview(top.entry)
     else clearPreview()
-  }, [showFolder, loadPreview, clearPreview])
+  }, [loadPreview, clearPreview])
 
   // Close (nav-pop) every level at or above `index`, topmost first.
   const popTo = useCallback((index) => {
@@ -235,18 +227,13 @@ export default function App({ token }) {
     renderTop()
   }, [popTo, renderTop])
 
+  // A crumb is always the location root or a folder already on the stack, so
+  // going to one only closes the levels above it.
   const goToCrumb = useCallback((path) => {
-    const clean = normalizePath(path)
     const levels = levelsRef.current
-    let keep = 0
-    while (keep < levels.length && levels[keep].kind === 'folder'
-      && (clean === levels[keep].path || clean.startsWith(`${levels[keep].path}/`))) keep += 1
-    popTo(keep)
-    const folder = levelsRef.current.at(-1)
-    const current = folder ? folder.path : baseRef.current
-    if (current !== clean) pushLevel({ kind: 'folder', path: clean })
+    popTo(levels.findIndex((level) => level.kind === 'folder' && level.path === path) + 1)
     renderTop()
-  }, [popTo, pushLevel, renderTop])
+  }, [popTo, renderTop])
 
   const openEntry = useCallback((entry) => {
     const levels = levelsRef.current
@@ -456,6 +443,7 @@ export default function App({ token }) {
                     <File width={30} height={30} aria-hidden="true" />
                     <strong>Preview unavailable</strong>
                     <span>{errorMessage(preview.error)}</span>
+                    <button type="button" onClick={() => loadPreview(selected)}>Try again</button>
                   </div>
                 )}
                 {!preview.loading && !preview.error && preview.meta && (
