@@ -104,25 +104,31 @@ export default function App({ token }) {
     }
   }, [])
 
+  // A new folder starts unfiltered and empty until its listing arrives.
   useEffect(() => {
-    loadFolder(START_PATH)
-  }, [loadFolder, token])
+    setEntries([])
+    setQuery('')
+    loadFolder(cwd)
+  }, [cwd, loadFolder, token])
 
   useEffect(() => () => {
     if (preview.objectUrl) URL.revokeObjectURL(preview.objectUrl)
   }, [preview.objectUrl])
 
-  const navigate = useCallback((path) => {
-    const clean = normalizePath(path)
-    setCwd(clean)
-    setEntries([])
-    setQuery('')
+  // Shell back stack. Each folder drill-in and each open preview is one level
+  // with its own reversible window.mobius.nav handle, so Android/browser Back
+  // closes the preview, then walks back up the folders, and Forward restores
+  // them. The visible view is always derived from the top level.
+  const levelsRef = useRef([])
+  const baseRef = useRef(START_PATH)
+
+  const clearPreview = useCallback(() => {
+    fileRequest.current += 1
     setSelected(null)
     setPreview(EMPTY_PREVIEW)
-    loadFolder(clean)
-  }, [loadFolder])
+  }, [])
 
-  const openFile = useCallback(async (entry) => {
+  const loadPreview = useCallback(async (entry) => {
     const requestId = ++fileRequest.current
     setSelected(entry)
     setPreview({ ...EMPTY_PREVIEW, loading: true })
@@ -163,16 +169,90 @@ export default function App({ token }) {
     }
   }, [])
 
+  const renderTop = useCallback(() => {
+    const levels = levelsRef.current
+    const top = levels.at(-1) || null
+    const folder = [...levels].reverse().find((level) => level.kind === 'folder')
+    setCwd(folder ? folder.path : baseRef.current)
+    if (top?.kind === 'preview') loadPreview(top.entry)
+    else clearPreview()
+  }, [loadPreview, clearPreview])
+
+  // Close (nav-pop) every level at or above `index`, topmost first.
+  const popTo = useCallback((index) => {
+    const levels = levelsRef.current
+    for (let i = levels.length - 1; i >= index; i -= 1) levels[i].handle?.close()
+    levels.length = index
+  }, [])
+
+  const pushLevel = useCallback((level) => {
+    const levels = levelsRef.current
+    level.parent = levels.at(-1) || null
+    level.base = baseRef.current
+    levels.push(level)
+    const nav = window.mobius?.nav
+    if (typeof nav?.open !== 'function') return
+    level.handle = nav.open(level.kind === 'preview' ? 'files-preview' : 'files-folder', {
+      onBack: () => {
+        const index = levelsRef.current.indexOf(level)
+        if (index === -1) return
+        // The shell already consumed this entry. Close any level opened above
+        // it (one may still await the shell's reply), then drop this one
+        // without sending another nav-pop for it.
+        popTo(index + 1)
+        levelsRef.current.length = index
+        renderTop()
+      },
+      onForward: () => {
+        // Only restore onto the exact view it was opened from; otherwise
+        // reject so the shell retires the stale slot.
+        if ((levelsRef.current.at(-1) || null) !== level.parent || baseRef.current !== level.base) {
+          throw new Error('Files view changed since this entry was opened')
+        }
+        levelsRef.current.push(level)
+        renderTop()
+      },
+    })
+    // A rejected, timed-out or unavailable back target leaves the level
+    // unbacked: the view still works through the in-app back arrow and
+    // breadcrumbs, and the next shell Back unwinds to the nearest owned level.
+    Promise.resolve(level.handle?.outcome).then((outcome) => {
+      if (outcome && outcome.status !== 'owned') level.handle = null
+    }, () => { level.handle = null })
+  }, [popTo, renderTop])
+
+  useEffect(() => () => popTo(0), [popTo])
+
+  const switchLocation = useCallback((path) => {
+    popTo(0)
+    baseRef.current = normalizePath(path)
+    renderTop()
+  }, [popTo, renderTop])
+
+  // A crumb is always the location root or a folder already on the stack, so
+  // going to one only closes the levels above it.
+  const goToCrumb = useCallback((path) => {
+    const levels = levelsRef.current
+    popTo(levels.findIndex((level) => level.kind === 'folder' && level.path === path) + 1)
+    renderTop()
+  }, [popTo, renderTop])
+
   const openEntry = useCallback((entry) => {
-    if (entry.type === 'directory') navigate(entry.path)
-    else openFile(entry)
-  }, [navigate, openFile])
+    const levels = levelsRef.current
+    const top = levels.at(-1)
+    if (entry.type !== 'directory' && top?.kind === 'preview' && top.entry.path === entry.path) return
+    if (top?.kind === 'preview') popTo(levels.length - 1)
+    pushLevel(entry.type === 'directory'
+      ? { kind: 'folder', path: normalizePath(entry.path) }
+      : { kind: 'preview', entry })
+    renderTop()
+  }, [popTo, pushLevel, renderTop])
 
   const closePreview = useCallback(() => {
-    fileRequest.current += 1
-    setSelected(null)
-    setPreview(EMPTY_PREVIEW)
-  }, [])
+    const levels = levelsRef.current
+    if (levels.at(-1)?.kind === 'preview') popTo(levels.length - 1)
+    renderTop()
+  }, [popTo, renderTop])
 
   const download = useCallback(async () => {
     if (!selected) return
@@ -224,7 +304,7 @@ export default function App({ token }) {
               key={location.label}
               type="button"
               className={`fx-location${cwd === location.path || (location.path && cwd.startsWith(`${location.path}/`)) ? ' is-active' : ''}`}
-              onClick={() => navigate(location.path)}
+              onClick={() => switchLocation(location.path)}
             >
               <LocationIcon name={location.icon} />
               <span>{location.label}</span>
@@ -240,7 +320,7 @@ export default function App({ token }) {
                 key={location.label}
                 type="button"
                 className={cwd === location.path || (location.path && cwd.startsWith(`${location.path}/`)) ? 'is-active' : ''}
-                onClick={() => navigate(location.path)}
+                onClick={() => switchLocation(location.path)}
               >
                 {location.label}
               </button>
@@ -256,7 +336,7 @@ export default function App({ token }) {
                     <button
                       type="button"
                       className={index === crumbs.length - 1 ? 'is-current' : ''}
-                      onClick={() => index < crumbs.length - 1 && navigate(crumb.path)}
+                      onClick={() => index < crumbs.length - 1 && goToCrumb(crumb.path)}
                       aria-current={index === crumbs.length - 1 ? 'page' : undefined}
                     >
                       {crumb.label}
@@ -365,6 +445,7 @@ export default function App({ token }) {
                     <File width={30} height={30} aria-hidden="true" />
                     <strong>Preview unavailable</strong>
                     <span>{errorMessage(preview.error)}</span>
+                    <button type="button" onClick={() => loadPreview(selected)}>Try again</button>
                   </div>
                 )}
                 {!preview.loading && !preview.error && preview.meta && (
